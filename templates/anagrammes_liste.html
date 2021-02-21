@@ -1,0 +1,10 @@
+
+<ul class="liste-anagrammes">
+  {% for anag in anagramms %}
+  {% if words|length > 0 %}
+  <li><a class="add-word" href="?add={{anag[0].mot}}">{{anag[0].mot}}</a> (reste: {{anag[1]}})</li>
+  {% else %}
+  <li><a class="add-word" href="?add={{anag[0].mot}}">{{anag[0].mot}}</a> (reste: {{anag[1]}})</li>
+  {% endif %}
+  {% endfor %}
+</ul>

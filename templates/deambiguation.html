@@ -1,0 +1,5 @@
+<select class="ambiguous_api" name="api-{{word}}">
+  {% for w_form in w_forms %}
+    <option value="{{w_form.api}}">{{w_form.mot}} /{{w_form.api}}/ ({{w_form.nature}})</option>
+  {% endfor %}
+</select>

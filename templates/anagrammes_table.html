@@ -1,0 +1,19 @@
+<table class="table-lemmes">
+  <thead>
+    <tr>
+      <th>Mot <img class="sort alpha" src="/static/images/sort_no.png" alt=""></th><th>nature<img class="sort nature" src="/static/images/sort_no.png" alt=""></th><th>genre<img class="sort genre" src="/static/images/sort_no.png" alt=""></th><th>nombre<img class="sort nombre" src="/static/images/sort_no.png" alt=""></th><th>longueur<img class="sort length" src="/static/images/sort_no.png" alt=""></th><th>reste</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for anag in anagramms %}
+    <tr>
+      <td><a class="add-word" href="?add={{anag[0].mot}}">{{anag[0].mot}}</a></td>
+      <td class="nature">{{anag[0].nature}}</td>
+      <td class="genre">{{anag[0].genre}}</td>
+      <td class="nombre">{{anag[0].nbr}}</td>
+      <td class="atl">{{anag[0].mot|length}}</td>
+      <td class="reste">{{anag[1]}}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

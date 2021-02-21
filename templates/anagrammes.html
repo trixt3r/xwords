@@ -1,0 +1,108 @@
+{% macro chosen_word(w) -%}
+<span class="word-block"><span class="word">{{w}}</span> <a href="?remove={{w}}" class="remove_word" title="bye bye '{{w}}!'" >x</a></span>
+{% endmacro %}
+
+<!doctype html>
+<html lang="fr" dir="ltr">
+  <head>
+    <script src="/static/jquery-3.5.1.min.js"></script>
+    <script src="/static/jquery-ui-1.12.1/jquery-ui.min.js"></script>
+    <script src="/static/anagrammes.js"></script>
+    <script src="/static/faq.js"></script>
+    <link rel="stylesheet" media="screen" type="text/css" href="/static/screen.css" />
+    <meta charset="utf-8">
+    <title>Anagrammes</title>
+  </head>
+  <body>
+    <div id="contents">
+<div id="header">
+
+</div>
+    <div id="left_column">
+
+    </div>
+    <div id="center">
+    {% if phrase %}
+  <h1>Anagrammes de : {{ phrase }}</h1>
+{% else %}
+  <h1>Entrez un mot ou une phrase:</h1>
+  {% endif %}
+  <form class="" method="get">
+    <label for="phrase">Entrez une phrase à anagrammer:</label>
+    <input type="text" name="phrase" value="" />
+    <input type="submit" name="submit" value="OK" />
+  </form>
+  <div id="breadcrumb">
+    {% if error_word %}
+    <p class="error"> Les lettres restantes ({{reste}}) ne permettent pas d'écrire le mot: "{{error_word}}"</p>
+    {% endif %}
+    <div id="chosen">
+
+      <p>Les mots suivants ont été choisis: </p>
+        {% for w in words %}
+          {%call chosen_word(w) %}
+          {%endcall%}
+        {% endfor %}
+    </div>
+</div>
+<div id="results-block">
+  {% if reste|length != 0 %}
+    <p><span class="rest-words-count">{{anagramms|length}}</span> mots avec les lettres restantes: <span id="reste">{{reste}}</span></p>
+    <p class="sort-options"> <span>Options de tri:</span>
+      <span class="sort-option">Nature <img class="sort nature" src="/static/images/sort_no.png" alt=""> </span>
+      <span class="sort-option">Alpha <img class="sort alpha" src="/static/images/sort_no.png" alt=""> </span>
+      <span class="sort-option">Genre <img class="sort genre" src="/static/images/sort_no.png" alt=""> </span>
+      <span class="sort-option">Nombre <img class="sort nombre" src="/static/images/sort_no.png" alt=""> </span>
+      <span class="sort-option">Longueur <img class="sort length" src="/static/images/sort_no.png" alt=""> </span>
+    </p>
+
+    {% if display == "table" %}
+      {% include "anagrammes_table.html" %}
+    {% else %}
+      {% include "anagrammes_liste.html" %}
+    {% endif %}
+    <form name="custom-word" action="custom-word" method="get">
+      <label for="add">Entrez un mot inconnu de la liste:</label>
+      <input type="text" name="add" value="" />
+      <input type="submit" name="submit" value="OK" />
+    </form>
+  {% else %}
+    {%if phrase %}
+    <p>Il ne reste aucune lettres! Bien joué.</p>
+    {%endif %}
+  {% endif %}
+</div>
+  <div id="faq-answers">
+    <p id="answer-q1">Probablement qu'il faut activer javascript. Si javascript est activé mais que ça marche quand même pas, j'ai envie de répondre: chez moi ça marche à peu près; mais si vous m'écrivez à l'adresse tout en bas de la page, pour me décrire le problème, je promets de m'en occuper. Un jour. Et de vous répondre. Le même jour.</p>
+    <p id="answer-q2">Ça c'est parce que je suis pas graphiste. Je pourrais me décarcasser et passer un temps fou à faire un truc design et chiadé, mais ça me prendrait beaucoup de temps. En plus, ça m'amuserait que très peu. Ça me plairaît à moi mais pas sûr que ça plaise au visiteur. <br/>
+      Ça vous viendrait pas à l'idée d'engager un mécanicien pour faire la peinture d'une carrosserie ? Sauf si c'est un mécano qui connaît aussi la carrosserie, je vous l'accorde. Bin moi, je suis juste mécano. J'ai des bases de carrosserie, mais ce qui prendrait une journée à un graphiste pour transformer ce cauchemar graphique en paradis de l'esthétisme, moi ça me prendrait sûrement... pfiou, je sais pas trop, à vue de nez, je dirais au moins 3 mois. Mais si vous connaissez un graphiste, avec des compétences HTML5/CSS3, que ça le dérange pas d'être payé au lance-pierres, n'hésitez-pas à lui faire signe de ma part, j'ai un beau lance-pierres.</p>
+    <p id="answer-q3">C'est intéressant que vous posiez la question. Avant de répondre je me permets un petit mode 3615 myLife. Lorsque j'étais étudiant, j'ai eu un professeur - le seul à être issu du secteur privé - qui nous a donné un conseil. Ce conseil, c'était le suivant:
+      surtout ne pas donner de conseils au client lorsqu'on définit le cahier des charges de son appliction avec lui. En tous cas, le moins possible. Le laisser se dépatouiller tout seul un maximum. Si vous repérez une fonctionnalité qu'il ne demande pas, mais que vous savez pertinemment qu'il en aura besoin à l'avenir,
+      vous la développez en même temps que ce qu'il vous a demandé, mais vous la tenez désactivée et cachée.<br/>
+      Quelques temps après la recette, quand le client s'aperçoit enfin qu'il a besoin de cette fonction, là c'est le moment de faire appel à ses talents d'acteur (les vôtres, hein, pas ceux du client) et de bien charger la mule.<br/>
+      &laquo;Houlala, ça il aurait fallu le prévoir depuis le début. Ça va être <span style="text-decoration:stroke;"> un merdier pas possible</span> compliqué d'ajouter ça maintenant. Ça va vous coûter le deuxième bras et me prendre au moins 6 mois de boulot à temps plein.&raquo;<br/>
+      Normalement, le client, fébrile, négocie avec vous, magnanime. &laquo;Finalement, on doit pouvoir le faire en 3 mois.&raquo; Pendant 3 mois, vous pouvez bosser sur autre chose, vous êtes payé double (ou alors vous prenez des vacances). Puis à la date prévue, deux trois clics pour activer la fonction demandée, le client est content et vous aussi.<br/>
+      Tout ça pour dire, il faut bien avouer que ça fait moyennement classe de pas être capable de différencier un &laquo;ế&raquo; d'un &laquo;e&raquo;. Comme je suis plus ou moins mon propre client, dans un avenir plus ou moins proche, j'ajouterai un paramètre keep_accents dans l'url, qui permettra de tenir compte des accents et autres cédilles. Il faudra juste rajouter :&quot;&amp;keep_accents=True&quot; après le ? dans l'url et ça marche.<br/>
+      Et plus tard, je rajouterai sûrement une case à cocher dans un coin. Il suffira de cliquer dans la case pour choisir si on veut que l'appli soit pointilleuse de l'accent ou pas. Mais ça, vraiment, je sais pas quand je vais pouvoir trouver le temps de le faire; il aurait fallu que j'y pense au tout début.
+    </p>
+  </div>
+</div>
+
+<div id="right_column">
+<h1>FAQ</h1>
+<ul id="faq">
+  <li> <a class="question" id="q1">Pourquoi ça marche pas ?</a> </li>
+  <li> <a class="question" id="q2">Ça marche, mais pourquoi c'est tout moche ?</a> </li>
+  <li> <a class="question" id="q3">Pourquoi ça gère pas les accents ?</a> </li>
+  <li> <a class="" id="set_display" href="?display={% if display== 'table'%}liste{%else%}table{%endif%}">Je préfère un affichage avec une {% if display== "table"%}liste{%else%}table{%endif%}</a> </li>
+</ul>
+</div>
+<div id="footer">
+
+</div>
+</div>
+<div id="devant-tout">
+  <p> <a href="#" class="exit-faq">X</a> </p>
+</div>
+  </body>
+</html>

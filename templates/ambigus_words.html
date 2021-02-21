@@ -1,0 +1,16 @@
+<div id="ambiguous-words">
+  <p>Les mots suivants ont plusieurs prononciations possibles, merci de préciser:</p>
+  <p class="ambiguous-words-list">
+    <ul>
+
+    {% for w in ambiguous %}
+    <li>{{w[0].mot}}:
+      {% for wform in w %}
+      <a href="deambiguation.html?w={{wform.mot}}&api={{wform.api}}" class="deambiguation-item">({{wform.nature}} /{{wform.api}}/)</a>
+      {% endfor %}
+
+    </li>
+    {% endfor %}
+  </ul>
+  </p>
+</div>
