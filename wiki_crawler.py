@@ -9,7 +9,7 @@ import requests
 from bs4 import BeautifulSoup
 from bs4.element import Tag, ResultSet
 
-from words_tuple import word_t, word_info_t, desinences_t
+from words_tuple import word_t, word_info_t, desinences_t, flex_adj
 from verb import Verb_info
 from cw import binary_search
 
@@ -18,6 +18,7 @@ from cw import binary_search
 def extract_infos(w, all_champs_lex=[]):
     # TODO prepare w (unicode, espaces, accents)
     page = requests.get("https://fr.wiktionary.org/wiki/%s" % w)
+    # page = requests.get("http://192.168.43.125:8181/wiktionary_fr_all_nopic_2020-10/A/%s" % w)
     soup = BeautifulSoup(page.content, "html.parser")
     categram_spans = soup.find_all("span", class_="titredef", id=re.compile('^fr-'))
     infos = []
@@ -30,9 +31,9 @@ def extract_infos(w, all_champs_lex=[]):
         nature = c['id'][3:regex_nature.search(c['id']).span()[0]-1]
         api = s.text[1:-1]
         champs_lex = set([x.text[1:-1] for x in c.find_next("ol").find_all("span", class_="term")])
-        antonymes = [x.text for x in [x.find('a') for x in _extract_list_elements(c, "anto")]]
-        hyponymes = [x.text for x in [x.find('a') for x in _extract_list_elements(c, "hypo")]]
-        synonymes = [x.text for x in [x.find('a') for x in _extract_list_elements(c, "syno")]]
+        antonymes = [x.text for x in [x.find('a') for x in _extract_list_elements(c, "anto")] if x is not None]
+        hyponymes = [x.text for x in [x.find('a') for x in _extract_list_elements(c, "hypo")] if x is not None]
+        synonymes = [x.text for x in [x.find('a') for x in _extract_list_elements(c, "syno")] if x is not None]
 
         if s.find_previous("span", class_="sectionlangue").attrs['id'] == 'fr':
             info_t = None
@@ -40,27 +41,53 @@ def extract_infos(w, all_champs_lex=[]):
                 # todo: aller chercher toutes les déclinaisons si besoin
                 infinitif = w
                 # todo: pas assez robuste les tests sur champs lex
-                info_t = word_info_t(nature, api, '-', "-", lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes)
+                info_t = word_info_t(nature, api, '-', "-", lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, mot=w)
             elif c['id'].startswith('fr-nom-'):
                 genre = _extract_nom_genre(c)
-                info_t = word_info_t(nature, api, genre, "S", lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes)
+                info_t = word_info_t(nature, api, genre, "S", lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, mot=w)
             elif c['id'].startswith("fr-adj"):
-                desin = _extract_adj_desinences(c)
-                info_t = word_info_t(nature, api, "M", "S", lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, desinences=desin)
+                desin = _extract_adj_desinences(c, w)
+                if isinstance(desin, word_t):
+                    # adjectif invariable
+                    info_t = word_info_t(nature, api, "I", "I", lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, desinences=None, mot=w)
+                else:
+                    info_t = word_info_t(nature, api, "M", "S", lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, desinences=desin, mot=w)
             elif c['id'].startswith('fr-flex-verb'):
                 # todo: robustesse
                 infinitif = c.find_next("th", colspan="3").find('i').text
-                info_t = word_info_t(nature, api, w, infinitif)
+                info_t = word_info_t(nature, api, w, infinitif, mot=w)
             elif c['id'].startswith('fr-flex-nom'):
                 nombre = _extract_nombre(c)
                 genre = _extract_nom_genre(c)
-                info_t = word_info_t(nature, api, genre, nombre, lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes)
+                info_t = word_info_t(nature, api, genre, nombre, lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, mot=w)
+            # elif c['id'].startswith('fr-flex-adj'):
+            #     lis = c.find_next("ol").find_all("li")
+            #     if lis.len > 1:
+            #         pass
+            #     else:
+            #         ms = lis[0].find("a").text
+            #         tmp = lis[0].text.split(" ")
+            #         if tmp[0].lower() == "féminin":
+            #             genre = "F"
+            #         elif tmp[0].lower() == "masculin":
+            #             genre = "M"
+            #         else:
+            #             genre = None
+            #         if tmp[1].lower() == "singulier":
+            #             nombre = "S"
+            #         elif tmp[1].lower() == "pluriel":
+            #             nombre = "P"
+            #         else:
+            #             nombre = None
+            #         # attention, je ne passe pas le masculin singulier, il est "perdu"
+            #         # on pourrait le passer dans un des champs de tag ? genre, synonyme
+            #         info_t = word_info_t(nature, api, genre, nombre, syno=[ms], mot=w)
             elif c['id'].startswith("fr-adv") or c['id'].startswith("fr-conj"):
-                info_t = word_info_t(nature, api, "-", "-", lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes)
+                info_t = word_info_t(nature, api, "-", "-", lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, mot=w)
                 pass
             else:
                 # TODO: ARTICLES, PRONOMS, ...
-                info_t = word_info_t(nature, api, lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes)
+                info_t = word_info_t(nature, api, lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, mot=w)
             if info_t is not None:
                 for elt in info_t:
                     if isinstance(elt, Tag) or isinstance(elt, ResultSet):
@@ -81,6 +108,7 @@ def extract_verb_info_wiki(v):
     # todo gérer les verbes intransitif et ceux qui n'ont que quelques pronoms
     # todo gérer les verbes composés ?
     page = requests.get("https://fr.wiktionary.org/wiki/Annexe:Conjugaison_en_français/%s" % v)
+    # page = requests.get("http://192.168.43.125:8181/wiktionary_fr_all_nopic_2020-10/A/%s" % v)
     soup = BeautifulSoup(page.content, "html.parser")
 
     def extract_temps(table):
@@ -145,12 +173,18 @@ def extract_verb_info_wiki(v):
         v_info['C'][temps[0]] = temps[1]
     impé = soup.find("span", id="Impératif").find_next("div").find("table").find_all("table")
     for t in impé:
+        print(t)
         temps = extract_temps(t)
         v_info['Im'][temps[0]] = temps[1]
     return v_info
 
 
 def make_info_list(wlist=[]):
+    """
+    LA grosse fonction, qui prend une lsite de mots en entrée, et enrichit le dictionnaire
+    en allant chercher les infos sur wiktionnary
+    en tous cas elle est senée le faire.
+    """
     def make_info_save(courants, error):
         gramm = {}
         if os.path.isfile("data/gramm.dmp"):
@@ -166,6 +200,7 @@ def make_info_list(wlist=[]):
             f.close()
         for k in courants:
             gramm[k] = courants[k]
+            print("$$$$$$$$$$$$$$$$$$$$$$$$$$$ %s %s" % (k, gramm[k]))
             i = binary_search(remains, k)
             if not i == -1:
                 del remains[i]
@@ -209,9 +244,10 @@ def make_info_list(wlist=[]):
             continue
         if cnt % 100 == 0:
             make_info_save(courants, error_list)
+            cnt+=1
             error_list = []
         if not binary_search(blacklist, w) == -1:
-            # print("esquivé: %s" % w)
+            print("esquivé: %s" % w)
             continue
             pass
         infos = None
@@ -225,18 +261,29 @@ def make_info_list(wlist=[]):
                 print("error: %s" % w)
                 error_list.append(w)
                 pass
-        # to know if w is only a verb or verb flex
-        verb_only = True
+
         if(infos is None):
             error_list.append(w)
             print("error: %s" % w)
             continue
+        # to know if w is only a verb or verb flex
+        verb_only = True
         for cat in infos:
+            # if not cat.nature.find("flex-adj") == -1:
+            #     ms = cat.syno[0]
+            #     if ms in courants:
+            #         pass
+            #     else:
+            #         pass
+
             # forme de verbe ou verbe infinitif
             if not cat.nature.find("verb") == -1:
                 verb = ""
+
                 if not cat.nature.find("flex-verb") == -1:
                     verb = cat[3]
+                    print("form de verbe: %s %s" % (w, verb))
+                    print(Verb_info.get(verb))
                 else:
                     verb = w
                 # si le verbe n'est pas dans la liste, aller chercher sa conjugaison
@@ -252,7 +299,9 @@ def make_info_list(wlist=[]):
                         v_i = Verb_info(v_s)
                         Verb_info.add(v_i)
                         blacklist += v_i.words_list
+                        blacklist = list(set(blacklist))
                         blacklist.sort()
+                        # print(blacklist)
                         _remains = []
                         if os.path.isfile("data/remains_list.dmp"):
                             f = open("data/remains_list.dmp", "rb")
@@ -265,10 +314,23 @@ def make_info_list(wlist=[]):
                         f = open("data/remains_list.dmp", "wb")
                         pickle.dump(_remains, f)
                         f.close()
-        #     else:
-        #         verb_only = False
-        # if not verb_only:
-        #     courants[w] = infos
+                else:
+                    v_i = Verb_info.get(verb)
+                    # print(v_i.words_list)
+                    blacklist += v_i.words_list
+                    blacklist = list(set(blacklist))
+                    blacklist.sort()
+                    # print(blacklist)
+
+            else:
+                # v_i = Verb_info.get(verb)
+                # blacklist += v_i.words_list
+                # blacklist = list(set(blacklist))
+                # blacklist.sort()
+                verb_only = False
+        if not verb_only:
+            print("ajout mot courant %s " % w)
+            courants[w] = infos
         print("%d %s %d ok" % (cnt, w, len(infos)))
         cnt += 1
     # at last! end of list
@@ -302,6 +364,10 @@ def make_verb_list(verb_list=None):
         f = open('data/liste_verbes_1979.dmp', "rb")
         verb_list = pickle.load(f)
         f.close()
+    if isinstance(verb_list, str):
+        f = open(verb_list, "rb")
+        verb_list = pickle.load(f)
+        f.close()
     verbs = {}
     # loading already known verbs
     if os.path.isfile("data/verbes_struct.dmp"):
@@ -326,8 +392,13 @@ def make_verb_list(verb_list=None):
             errors.append(v)
             print("verbe pronominal: %s" % v)
             continue
+        if Verb_info.get(v) is not None:
+            print("je l'ai déjà: %s" % v)
+            continue
         try:
             verbs[v] = extract_verb_info_wiki(v)
+            Verb_info.add(Verb_info(verbs[v]))
+            print("%s ok" % v)
         except:
             errors.append(v)
             print("error : %s" % v)
@@ -344,6 +415,8 @@ def make_verb_list(verb_list=None):
 
 def get_categrams(w):
     page = requests.get("https://fr.wiktionary.org/wiki/%s" % w)
+    # page = requests.get("http://192.168.43.125:8181/wiktionary_fr_all_nopic_2020-10/A/%s" % w)
+
     soup = BeautifulSoup(page.content, "html.parser")
     categram_spans = soup.find_all("span", class_="titredef", id=re.compile('^fr-'))
     return categram_spans
@@ -386,11 +459,11 @@ class champs_lex:
         return self.all_champs.index(k)
 
 
-def extract_adj_desinences(categ):
-    return _extract_adj_desinences(categ)
+def extract_adj_desinences(categ, w):
+    return _extract_adj_desinences(categ, w)
 
 
-def _extract_adj_desinences(categ):
+def _extract_adj_desinences(categ, w):
     msi = False
     tmp = categ.find_next("span", class_="ligne-de-forme")
     if tmp is not None:
@@ -399,61 +472,109 @@ def _extract_adj_desinences(categ):
         msi = True
 
     genre = categ.find_next('table', class_='flextable-fr-mfsp')
+    if genre is None:
+        genre = categ.find_next('table', class_='flextable')
+        if genre.find_all('tr')[0].text.strip("\n") == "Invariable":
+            adj = genre.find_all('tr')[1].text.strip("\n").split("\\")
+            return word_t(adj[0], adj[1])
+            # return desinences_t(word_t(adj[0], adj[1]),word_t(adj[0], adj[1]),word_t(adj[0], adj[1]),word_t(adj[0], adj[1]))
+    trs = genre.find_all('tr')
+    if "colspan" in trs[-1].find_all('td')[0].attrs:
+        msi = True
     masc = None
     fem = None
     ms = None
     mp = None
     fs = None
     fp = None
+    api = None
     if genre is None:
+        # return desinences_t(ms=word_t("", ""), mp=word_t("", ""),fs=word_t("", ""),fp=word_t("", ""))
         raise Exception("Erreur pas de désinences")
-    if genre.find_all('tr')[1].find('th').text.replace("\n", " ") == "Masculinet féminin ":
-        # todo ça va planter si singulier et pluriel ont deux prononciations différentes
-        #todo ça plante aussi si la première case "masculin et féminin" est absente (ex: abiotique)
-        sing_plur = [x.text.strip("\n").strip("\xa0") for x in genre.find_all('tr')[1].find_all('td')]
-        api = genre.find_all('tr')[2].text.strip("\n").strip("\\")
-        ms = word_t(sing_plur[0], api)
-        mp = word_t(sing_plur[1], api)
-        fs = word_t(sing_plur[0], api)
-        fp = word_t(sing_plur[1], api)
-    else:
-        tds_f = genre.find('tr', class_="flextable-fr-f").find_all('td')
-        tds_m = genre.find('tr', class_="flextable-fr-m").find_all('td')
-        masc = [x.text for x in tds_m]
-        fem = [x.text for x in tds_f]
-        ms = extract_word_phonetic(masc[0])  # word_t
-        mp = extract_word_phonetic(masc[1])  # word_t
-        fs = extract_word_phonetic(fem[0])  # word_t
-        fp = extract_word_phonetic(fem[1])  # word_t
-    rad = ""
-    if mp[0].startswith(ms[0]):
-        mp = ("+"+mp[0][len(ms[0]):], mp[1])
-        pass
-    if fs[0].startswith(ms[0]):
-        # exemple: petit, grand, factuel
-        if fp[0].startswith(fp[0]):
-            fp = ("+"+fp[0][len(ms[0]):], fp[1])
-        fs = ("+"+fs[0][len(ms[0]):], fs[1])
-    else:
-        # exemple: inclusif
+    if msi is True:
         i = 0
-        while ms[0][i] == fs[0][i]:
+
+        while i < len(trs):
+            tr = trs[i]
+            tds = tr.find_all('td')
+            if len(tds) and tds[0].text.startswith(w):
+                ms = tds[0].text.strip("\n").split("\\")
+                if len(ms) == 1:
+                    api = trs[-1].find("a").text.strip("\\")
+                    ms = word_t(ms[0], api)
+                else:
+                    ms = word_t(ms[0], ms[1])
+                mp = tds[1].text.strip("\n").split("\\")
+                if len(mp) == 1:
+                    mp = word_t(mp[0], api)
+                else:
+                    mp = word_t(mp[0], mp[1])
+                fs = word_t(ms[0], ms[1])
+                fp = word_t(mp[0], mp[1])
+                break
             i += 1
-        if i == len(ms[0])-1:
-            fs = ("-" + fs[0][i:], fs[1])
-            fp = ("-" + fs[0][i:], fp[1])
-            pass
+        pass
+    else:
+        if genre.find_all('tr')[1].find('th').text.replace("\n", " ") == "Masculinet féminin ":
+            # todo ça va planter si singulier et pluriel ont deux prononciations différentes
+            #todo ça plante aussi si la première case "masculin et féminin" est absente (ex: abiotique)
+            sing_plur = [x.text.strip("\n").strip("\xa0") for x in genre.find_all('tr')[1].find_all('td')]
+            api = genre.find_all('tr')[2].text.strip("\n").strip("\\")
+            ms = word_t(sing_plur[0], api)
+            mp = word_t(sing_plur[1], api)
+            fs = word_t(sing_plur[0], api)
+            fp = word_t(sing_plur[1], api)
         else:
-            # cas relou, j'ai pas encore d'exemple
-            rad = ms[0][:i]
-            ms = ("+" + ms[0][i:], ms[1])
-            mp = ("+" + mp[0][i:], mp[1])
-            fs = ("+" + fs[0][i:], fs[1])
-            fp = ("+" + mp[0][i:], fp[1])
-            if len(rad) == 0:
-                # pas de radical commun entre masculin et feminin
-                # je sais même pas si un mot comme ça existe
-                pass
+            tds_f = genre.find('tr', class_="flextable-fr-f").find_all('td')
+            tds_m = genre.find('tr', class_="flextable-fr-m").find_all('td')
+            masc = [x.text for x in tds_m]
+            fem = [x.text for x in tds_f]
+            ms = extract_word_phonetic(masc[0])  # word_t
+            if len(masc) == 1:
+                mp = ms
+            else:
+                mp = extract_word_phonetic(masc[1])  # word_t
+            fs = extract_word_phonetic(fem[0])  # word_t
+            if len(fem) == 1:
+                fp = fs
+            else:
+                fp = extract_word_phonetic(fem[1])  # word_t
+    # rad = ""
+    # if mp[0].startswith(ms[0]):
+    #     mp = word_t("+"+mp[0][len(ms[0]):], mp[1])
+    #     pass
+    # if fs[0].startswith(ms[0]):
+    #     # exemple: petit, grand, factuel
+    #     if fp[0].startswith(fp[0]):
+    #         fp = word_t("+"+fp[0][len(ms[0]):], fp[1])
+    #     fs = word_t("+"+fs[0][len(ms[0]):], fs[1])
+    # else:
+    #     # exemple: inclusif
+    #     i = 0
+    #     while ms[0][i] == fs[0][i]:
+    #         i += 1
+    #     if i == len(ms[0])-1:
+    #         fs = word_t("-" + fs[0][i:], fs[1])
+    #         fp = word_t("-" + fp[0][i:], fp[1])
+    #         pass
+    #     else:
+    #         # cas relou, j'ai pas encore d'exemple
+    #         # ça y est je savais bien que ça existait.
+    #         # j'ai trouvé un exemple: beau/belle
+    #         print(ms)
+    #         print(mp)
+    #         print(fs)
+    #         print(fp)
+    #         rad = ms[0][:i]
+    #         print('rad: %s' % rad)
+    #         ms = word_t("+" + ms[0][i:], ms[1])
+    #         mp = word_t("+" + mp[0][i:], mp[1])
+    #         fs = word_t("+" + fs[0][i:], fs[1])
+    #         fp = word_t("+" + mp[0][i:], fp[1])
+    #         if len(rad) == 0:
+    #             # pas de radical commun entre masculin et feminin
+    #             # je sais même pas si un mot comme ça existe
+    #             pass
     desin = desinences_t(ms=ms, mp=mp, fs=fs, fp=fp)
     return desin
 
@@ -601,3 +722,37 @@ def extract_word_phonetic(s):
 #                 else:
 #                     return None
 #     return v_info
+
+
+import re
+
+def parcours_gramm(gramm_dict, fonction):
+    for w in gramm_dict:
+        for wt in gramm_dict[w]:
+            fonction(wt)
+
+def liste_natures(gramm_dict):
+    nat = []
+    def f(wt):
+        if not wt.nature in nat:
+            nat.append(wt.nature)
+    parcours_gramm(gramm_dict, f)
+    return nat
+
+
+def filter_gramm(gramm_dict, nat=None):
+    ret = []
+    for w in gramm_dict:
+        for wt in gramm_dict[w]:
+            if nat(wt.nature):
+                ret.append(wt)
+    return ret
+
+
+def update_gramm(gramm_dict):
+    for w in gramm_dict:
+        flex = []
+        for wt in gramm_dict[w]:
+            wt_updated = word_info_t(nature=wt.nature, api=wt.api, genre=wt.genre, nbr=wt.nbr, lex=wt.lex, anto=wt.anto, hypo=wt.hypo, syno=wt.syno, desinences=wt.desinences, mot=w)
+            flex.append(wt_updated)
+        gramm_dict[w] = flex
