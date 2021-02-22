@@ -45,23 +45,23 @@ class Node(object):
         return "<%s %d %d>" % (self.cw, 0, len(self.children))
 
 
-class TreeVisitor(object):
-    def __init__(self, data_sort, children_sort):
-        pass
-
-    def visit(node):
-        fifo = [node]
-        while len(fifo) > 0:
-            c_node = fifo.pop()
-            if c_node.data is not None:
-                data_keys = [k for k in c_node.data.keys()]
-                data_keys.sort()
-                for k in data_keys:
-                    yield k
-            next = [c for c in c_node.children]
-            next.sort(reverse=True)
-            for c in next:
-                fifo.append(c_node.children[c])
+# class TreeVisitor(object):
+#     def __init__(self, data_sort, children_sort):
+#         pass
+#
+#     def visit(node):
+#         fifo = [node]
+#         while len(fifo) > 0:
+#             c_node = fifo.pop()
+#             if c_node.data is not None:
+#                 data_keys = [k for k in c_node.data.keys()]
+#                 data_keys.sort()
+#                 for k in data_keys:
+#                     yield k
+#             next = [c for c in c_node.children]
+#             next.sort(reverse=True)
+#             for c in next:
+#                 fifo.append(c_node.children[c])
 
 
 def parcours_arbre_data(node):

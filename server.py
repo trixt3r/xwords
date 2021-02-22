@@ -4,9 +4,6 @@ from _thread import *
 import threading
 import pickle
 
-import dico
-import node
-
 # serveur de "base de données"
 # récupèr les requêtes en provenance de flask (ou autre)
 # effectue la recherche
@@ -46,8 +43,9 @@ def threaded(c):
         print("request for %s " % words_request)
         if mode_options & 1 == 0:
             rs = idx.search_anagrammes(data.decode('utf8'), keep_accents=keep_accents)
-            for x in rs.items:
-                print(x.mot)
+            print("%d" % len(rs._items))
+            # for x in rs.items:
+            #     print(x.mot)
             # seralize
             data = pickle.dumps(rs)
             # on send data length
@@ -103,7 +101,7 @@ def Main():
             port += 1
         else:
             connected = True
-    print("socket binded to port", port)
+    print("socket bound to port", port)
     # put the socket into listening mode
     s.listen(5)
     print("socket is listening")

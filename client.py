@@ -4,7 +4,8 @@ import socket
 # import threading
 import pickle
 
-# client_lock = threading.Lock()
+# just a test client
+
 anagram = "marie"
 host = '127.0.0.1'
 port = 12346

@@ -126,22 +126,16 @@
   function remove_chosen_word(w_elt){
     var w = w_elt.text();
     var reste = sort_word(w+extract_reste())
-    console.log("r_c_w: mot a retirer: "+w)
-    console.log("new reste:" + reste)
-    console.log("################ visible rows: ################");
     $("table.table-lemmes tbody tr:visible").each(function(){
       var this_w = $(this).find("a.add-word").text();
       var sw = sort_word(this_w);
       var diff = difference(sw, reste);
-      console.log("r_c_w: " + this_w + " " + $(this).find("td.reste").text() + " " + diff + " ");
       $(this).find("td.reste").text(diff);
     });
-    console.log("################ hidden rows: ################");
     $("table.table-lemmes tbody tr.unwritable").each(function(){
       var this_w = $(this).find("a.add-word").text();
       var sw = sort_word(this_w);
       var diff = difference(sw, reste);
-      console.log("r_c_w: " + this_w + " " + $(this).find("td.reste").text() + " " + diff + " ");
       if (diff===false){
         // console.log("erreur l.134: "+w+" mot:"+this_w+" dans l'ordre: "+sw+" reste:"+reste+" difference:"+diff);
       }else{
@@ -241,6 +235,7 @@
   function remove_word_click_event(event){
     event.preventDefault();
     remove_chosen_word($(this).prev('span.word'));
+    update_natures_count();
   }
   //************************** TRI **************************//
   function alpha_compare(a, b, up = 1) {
@@ -352,6 +347,7 @@
        event.preventDefault();
        word = event.target.innerText;
        chose_word($(event.target));
+       update_natures_count();
      });
      $("a.remove_word").click(remove_word_click_event);
     // $("div#breadcrumb").append("<span>"+create_chosen_words_arg()+"</span>");

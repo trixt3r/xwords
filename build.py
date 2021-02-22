@@ -3,7 +3,7 @@ import pickle
 import random
 from collections import defaultdict
 import os
-here = os.path.dirname(__file__)
+
 
 from node import Index, Node
 import cw as cwapi
@@ -11,6 +11,7 @@ from words_tuple import word_t, word_info_t, fusion_word_info_t
 from verb import init_verb_class
 import GNode
 
+here = os.path.dirname(__file__)
 
 def loadGramm(file="data/gramm.dmp"):
     with open(os.path.join(here,file), "rb") as f:

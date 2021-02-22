@@ -8,6 +8,7 @@
     <script src="/static/jquery-3.5.1.min.js"></script>
     <script src="/static/jquery-ui-1.12.1/jquery-ui.min.js"></script>
     <script src="/static/anagrammes.js"></script>
+    <script src="/static/filters.js"></script>
     <script src="/static/faq.js"></script>
     <link rel="stylesheet" media="screen" type="text/css" href="/static/screen.css" />
     <meta charset="utf-8">
@@ -94,8 +95,8 @@
   <li> <a class="question" id="q1">Pourquoi ça marche pas ?</a> </li>
   <li> <a class="question" id="q2">Ça marche, mais pourquoi c'est tout moche ?</a> </li>
   <li> <a class="question" id="q3">Pourquoi ça gère pas les accents ?</a> </li>
-  <li> <a class="" id="set_display" href="?display={% if display== 'table'%}liste{%else%}table{%endif%}">Je préfère un affichage avec une {% if display== "table"%}liste{%else%}table{%endif%}</a> </li>
 </ul>
+{% include "filters.html" %}
 </div>
 <div id="footer">
 

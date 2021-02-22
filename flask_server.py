@@ -26,6 +26,11 @@ s.connect((server_adress, server_port))
 #     gramm = pickle.load(f)
 
 
+@app.template_test("none")
+def is_flex(v: str):
+    return v.startswith("flex-")
+
+
 def default_val(val, default):
     if val is None:
         return default
@@ -73,7 +78,8 @@ def get_session_values(request):
 
 @app.route("/")
 def index():
-    pass
+    resp = make_response(render_template('index.html'))
+    return resp
 
 
 @app.route("/anagrammes")
@@ -83,7 +89,7 @@ def anagrammes():
     reste = None
     resp = None
     if phrase is None:
-        resp = make_response(render_template('anagrammes.html', display=display))
+        resp = make_response(render_template('anagrammes.html', display=display, natures=["nom", "adj", "verb"]))
         set_cookies(resp, None, None, None, display, keep_accents)
         return resp
 
@@ -147,7 +153,7 @@ def anagrammes():
     if phrase is None:
         resp = make_response(render_template('anagrammes.html', display=display))
     else:
-        resp = make_response(render_template('anagrammes.html', anagramms=anagramms, reste=reste, words=mots_choisis, phrase=phrase, error_word=error_word, display=display))
+        resp = make_response(render_template('anagrammes.html', natures=["nom", "adj", "verb"], anagramms=anagramms, reste=reste, words=mots_choisis, phrase=phrase, error_word=error_word, display=display))
         set_cookies(resp, phrase, mots_choisis, reste, display, keep_accents)
     return resp
 

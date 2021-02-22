@@ -6,9 +6,10 @@
   </thead>
   <tbody>
     {% for anag in anagramms %}
-    <tr>
+    {% if anag[0].nature.startswith('flex-')%} {% set nature = anag[0].nature[5:] %} {%else%} {% set nature = anag[0].nature %} {%endif%}
+    <tr class="{{nature}}">
       <td><a class="add-word" href="?add={{anag[0].mot}}">{{anag[0].mot}}</a></td>
-      <td class="nature">{{anag[0].nature}}</td>
+      <td class="nature {{nature}}">{{nature}}</td>
       <td class="genre">{{anag[0].genre}}</td>
       <td class="nombre">{{anag[0].nbr}}</td>
       <td class="atl">{{anag[0].mot|length}}</td>

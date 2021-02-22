@@ -2,125 +2,9 @@ import pickle
 
 from cw import getCanonicForm, can_write
 from cw import iter_api_phoneme
-from words_tuple import word_info_t
+# from words_tuple import word_info_t
 from node import Node
-
-from sortedlist import SortedList
-
-
-class WSortedList(SortedList):
-    def __init__(self):
-        super(WSortedList, self).__init__(None)
-
-    def sort_key(self, x):
-        return x.mot
-
-
-# parcours récursif: si data est un dictionnaire de dictionnaires de dctionnaires...
-# cette fonction renvoit les éléments "feuilles"
-def explore_to_words(data):
-    if isinstance(data, list):
-        for w in data:
-            yield w
-        return
-    for k in data.keys():
-        for k in explore_to_words(data[k]):
-            yield k
-
-
-class ResultSet(object):
-    def __init__(self, items, request=None):
-        # self.items = SortedList(lambda x:x.mot)
-        self._items = WSortedList()
-        self.request = request
-        self.accents_flag = False
-        for x in items:
-            self._items.append(x)
-
-    def accents(self, flag=None):
-        if flag is None:
-            return self.accents_flag
-        self.accents_flag = flag
-
-    def group_dict(self, dico, group_by):
-        for k in dico.keys():
-            if isinstance(dico[k], dict):
-                dico[k] = self.group_dict(dico[k], group_by)
-            else:
-                assert isinstance(dico[k], SortedList)
-                dico[k] = dico[k].group(group_by)
-
-    # todo: lorsqu'on classe par longueur, puisqu'on place les listes
-    # dans un dictionnaire, on ne les parcourt pas dans l'ordre de longueur.
-    # les mots sont bien classés, mais ceux de longueur 3 peuvent apparaître
-    # avant ceux de longueur 2, etc
-    # use SortedDict ??
-    def group(self, group_by):
-        def nature_group_filter_key(wit: word_info_t):
-            if wit.nature.startswith("flex-"):
-                return wit.nature[5:]
-            return wit.nature
-
-        def len_group_filter_key(wit: word_info_t):
-            return len(wit.mot)
-
-        if not isinstance(group_by, list):
-            group_by = [group_by]
-        for b in group_by:
-            assert b in ["len", "nature", "genre", "nbr"]
-            key = None
-        if group_by[0] == 'len':
-            # key = lambda x: len(x.mot)
-            key = len_group_filter_key
-        else:
-            if group_by[0] == "nature":
-                key = nature_group_filter_key
-            else:
-                # key = lambda x: getattr(x, b)
-                key = lambda x: getattr(x, b)
-        groups = self._items.group(key)
-        for b in group_by[1:]:
-            key = None
-            if b == 'len':
-                # key = lambda x: len(x.mot)
-                key = len_group_filter_key
-            elif b == "nature":
-                key = nature_group_filter_key
-            else:
-                # key = lambda x: getattr(x, b)
-                key = lambda x: getattr(x, b)
-            self.group_dict(groups, key)
-        self.groups = groups
-        self.group_names = group_by
-
-    # filter items set.
-    # grouping and sorting should be lost
-    # filter: a callable with one parameter of type word_info_t. Should return true
-    # if current element should be kept in new resultset
-    def filter(self, filter):
-        assert callable(filter)
-        new_list = WSortedList()
-        for x in self.items:
-            if filter(x):
-                new_list.append(x)
-        return ResultSet(new_list)
-
-    # obsolete
-    @property
-    def words(self):
-        return [x.mot for x in self._items]
-
-    @property
-    def items(self):
-        if hasattr(self, "groups"):
-            for x in explore_to_words(self.groups):
-                yield x
-            return
-        for x in self. _items:
-            yield x
-
-    def __repr__(self):
-        return "[ResultSet {} items]".format(len(self._items))
+from ResultSet import ResultSet
 
 
 # not sure if it's the right way to do that
@@ -158,7 +42,7 @@ class WordMetaIndex(type):
         return cls
 
 
-# idem, not sre it's the right way.It's possible that MetaClass isn't useful here.
+# idem, not sure it's the right way.It's possible that MetaClass isn't useful here.
 class PhonemeMetaIndex(type):
     def __new__(metacls, class_name: str, class_bases: tuple, class_attrs: dict):
         def data_initializer(self, node):
@@ -244,10 +128,10 @@ class AbstractIndex():
 
         ret = []
         # TODO: check that each letter is present in only one tuple
-        # all_confused_letters = []
-        # for t in confusions:
+        # all_generic_symbols = []
+        # for t in generics:
         #     for letter in t:
-        #         all_confused_letters.append(letter)
+        #         all_generics_symbols.append(letter)
         if exact_match:
             raise Exception("Exact match option probably broken.")
             n = self.search(self.key_valider(word), False)
@@ -287,77 +171,26 @@ class AbstractIndex():
             rs.accents(True)
         return rs
 
-    # def search_anagrammes(self, word, keep_accents=False, exact_match=False, confusions=[]):
-    #     # def filter_word_list(word, node_list):
-    #     #     words = []
-    #     #     cword = cwapi.getCanonicForm(word, True)
-    #     #     for n in node_list:
-    #     #         if n.data is not None:
-    #     #             for w in n.data:
-    #     #                 cw = cwapi.getCanonicForm(w, True)
-    #     #                 if cwapi.can_write(cword, cw):
-    #     #                     words.append(w)
-    #     #     return words
-    #
-    #     def create_accents_filter(word):
-    #         return lambda x: can_write(self.key_valider(word, True), self.key_valider(x.mot, True))
-    #     ret = []
-    #     if exact_match:
-    #         raise Exception("exact match option probably broken")
-    #         n = self.search(self.key_valider(word), False)
-    #         if len(word) != len(n.cw):
-    #             n = []
-    #         else:
-    #             n = [n]
-    #         rs = Index.ResultSet(n, word)
-    #         if keep_accents:
-    #             rs.filters.append(create_accents_filter(word))
-    #         return rs
-    #
-    #     fifo = [(self.root_node, self.key_valider(word))]
-    #     while len(fifo) > 0:
-    #         s = fifo.pop()
-    #         cn = s[0]
-    #         cw = s[1]
-    #         for i in range(0, len(cw)):
-    #             if i > 0 and cw[i-1] == cw[i]:
-    #                 continue
-    #             child = cn.child(cw[i])
-    #             if child is not None:
-    #                 ret.append(child)
-    #                 to_find = cw[:i] + cw[i+1:]
-    #                 if len(to_find) > 0:
-    #                     fifo.append((child, to_find))
-    #                 # print("%s %s" % (child.cw, to_find))
-    #     return_list = []
-    #     for x in ret:
-    #         if x.data is not None:
-    #             for wit in x.data:
-    #                 return_list.append(wit)
-    #     rs = ResultSet(return_list, request=word)
-    #     if keep_accents:
-    #         rs.accents(True)
-    #     return rs
+
+# alphabetic index class
+class Index(AbstractIndex, metaclass=WordMetaIndex):
+    def __init__(self):
+        self.root_node = self.node_impl("")
+
+    def search_anagrammes(self, word, keep_accents=False, exact_match=False):
+        rs = super(Index, self).search_anagrammes(word, keep_accents, exact_match)
+        if keep_accents:
+            canonic_form = getCanonicForm(word, True)
+            # print("canonic: %s" % canonic_form)
+            return ResultSet([x for x in rs.items if can_write(canonic_form, getCanonicForm(x.mot, True))], rs.request)
+        return rs
 
 
-def create_index():
-    with open("data/gramm.dmp", "rb") as f:
-        dictio = (pickle.load(f))
-    idx = Index()
-    for k in dictio:
-        for w in dictio[k]:
-            idx.addWord(w)
-    return idx
-
-
-def create_phoneme_index():
-    with open("data/gramm.dmp", "rb") as f:
-        dictio = (pickle.load(f))
-    idx = PhonemeIndex()
-    for k in dictio:
-        for w in dictio[k]:
-            idx.addWord(w)
-    return idx
+# phonetic index class
+class PhonemeIndex(AbstractIndex, metaclass=PhonemeMetaIndex):
+    def __init__(self):
+        self.root_node = self.node_impl([])
+    pass
 
 
 class Dico(object):
@@ -380,22 +213,21 @@ class Dico(object):
                 self._dico_element_iter = iter(self._dico_element)
 
 
-# alphabetic index class
-class Index(AbstractIndex, metaclass=WordMetaIndex):
-    def __init__(self):
-        self.root_node = self.node_impl("")
-
-    def search_anagrammes(self, word, keep_accents=False, exact_match=False):
-        rs = super(Index, self).search_anagrammes(word, keep_accents, exact_match)
-        if keep_accents:
-            canonic_form = getCanonicForm(word, True)
-            # print("canonic: %s" % canonic_form)
-            return ResultSet([x for x in rs.items if can_write(canonic_form, getCanonicForm(x.mot, True))], rs.request)
-        return rs
+def create_index():
+    with open("data/gramm.dmp", "rb") as f:
+        dictio = (pickle.load(f))
+    idx = Index()
+    for k in dictio:
+        for w in dictio[k]:
+            idx.addWord(w)
+    return idx
 
 
-# phonetic index class
-class PhonemeIndex(AbstractIndex, metaclass=PhonemeMetaIndex):
-    def __init__(self):
-        self.root_node = self.node_impl([])
-    pass
+def create_phoneme_index():
+    with open("data/gramm.dmp", "rb") as f:
+        dictio = (pickle.load(f))
+    idx = PhonemeIndex()
+    for k in dictio:
+        for w in dictio[k]:
+            idx.addWord(w)
+    return idx
