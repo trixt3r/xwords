@@ -1,3 +1,16 @@
+//********************************/
+//trying to merge light/normal version
+//TODO: gérer les fonctions de tri par nature
+//TODO contrepeteries cassées, check chose_word, remove_word et ce genre de trucs
+//TODO: checker surtout comment sont gérées les chaîne de caracptère phonétique
+//car j'ai le même problème avec les accents que j'avais en python
+//(les accents sont renvoyés comme des caractères distincts, donc ils se perdent)
+//********************************/
+
+
+
+
+
 //this function create a http query arg which contains the
 //list of words already chosen by user
   function create_chosen_words_arg(){
@@ -30,98 +43,7 @@
 
 
 
-  //************************** Specifique Anagramme **************************//
-  //return true if b can write a
-  //else false
-  function can_write(a, b){
-    return difference(a, b, true);
-  }
-  //return b - a
-  //return false if b cannot write a
-  function difference(a, b, can_write_flag=false){
-    var j=0, i=0, result = "";
-    for(;i<a.length;i++){
-      c = a[i];
-      while(!(b[j] == c)){
-        // console.log("cmp "+c+", "+b[j])
-        result += b[j];
-        j++;
-        if(j>=b.length)
-          break;
-      }
-      j++;
-      if(j>b.length)
-        break;
-    }
-    if(i!=a.length){
-      //todo: le cas a == b passe par ici
-      //il ne devrait pas
-      //console.log(i+" "+a.length)
-      //console.log(j+" "+b.length)
-      return false;}
-    if(can_write_flag)
-      return true;
-    for(;j<b.length;j++)
-      result += b[j];
-    return result;
-  }
-  function remove_accents_word(w){
-    result = ""
-    accents = {"e": "éèêë",
-          "a": "âà",
-          "i": "îï",
-          "o": "öô",
-          "u": "ûù",
-          "c": "ç"}
-    var found = false;
-    var keys = Object.keys(accents);
-    for(i=0;i<w.length;i++){
-      for(k=0;k<keys.length;k++){
-        if(accents[keys[k]].includes(w[i])){
-          result += keys[k];
-          w[i] = keys[k];
-          found = true;
-          break;
-        }
-      }
-      if(found){
-        found = false;
-        continue;
-      }
-      result += w[i];
-    }
-    return result;
-  }
-  function sort_word(w, accents=false){
-    var letters = []
-    w = w.replaceAll('-','');
-    if(accents == false){
-      w = remove_accents_word(w);
-    }
-    for(i=0;i<w.length;i++){
-      letters.push(w[i]);
-    }
-    //console.log(letters);
-    letters.sort();
-    return letters.join("");
-  }
-
-  function sort_phoneme(api){
-    var letters = [], i = 0;
-    while( i<api.length ){
-      if(api.charAt(i)=='.')
-        i++;
-      if (i<api.length-1 && api.charCodeAt(i+1) == 771){
-        letters.push(api.substr(i, 2));
-        i += 2;
-      }else{
-        letters.push(api.charAt(i));
-        i++;
-      }
-    }
-    letters.sort();
-    return letters.join('');
-  }
+  
   //************************** UI **************************//
   function remove_chosen_word(w_elt){
     var w = w_elt.text();
@@ -129,8 +51,11 @@
     if(window.play_mode=='C')
       sort_word_method = sort_phoneme
     var reste = sort_word_method(w+extract_reste());
-    //pour chaque mot visible, mettre à jour le reste
-    $("table.table-lemmes tbody tr:visible").each(function(){
+    //pour chaque mot, mettre à jour le reste
+    var rows = $("table.table-lemmes tbody tr");
+    if(rows.length==0)
+      rows = $("ul.liste-anagrammes li");
+    rows.each(function(){
       var this_w = $(this).find("a.add-word");
       if(window.play_mode=='C'){
         this_w = this_w.next('span.api').text();
@@ -140,10 +65,58 @@
       }
       var sw = sort_word_method(this_w);
       var diff = difference(sw, reste);
-      $(this).find("td.reste").text(diff);
+      if (diff===false){
+        //nothing to do, this word was and is still unwritable 
+      }else{
+
+        var x = $(this).find("span.w-reste");
+        if(x.length==0)
+          x=$(this).find("td.reste");
+        x.text(diff);
+        $(this).removeClass("unwritable");
+      }
+      
+    });
+
+    $(w_elt.parent()).remove();
+    var visible_elements = $("ul.liste-anagrammes li:not(.unwritable)");
+    if(visible_elements.length==0){
+      visible_elements = $("table.table-lemmes tbody tr:not(.unwritable)");
+    }
+    $("span.rest-words-count").text(visible_elements.length);
+    set_reste(reste);
+  }
+
+  function remove_chosen_word_old(w_elt){
+    var w = w_elt.text();
+    var sort_word_method = sort_word
+    if(window.play_mode=='C')
+      sort_word_method = sort_phoneme
+    var reste = sort_word_method(w+extract_reste());
+    //pour chaque mot visible, mettre à jour le reste
+    var rows = $("table.table-lemmes tbody tr:not(.unwritable)");
+    if(rows.length==0)
+      rows = $("ul.liste-anagrammes li:not(.unwritable)");
+    rows.each(function(){
+      var this_w = $(this).find("a.add-word");
+      if(window.play_mode=='C'){
+        this_w = this_w.next('span.api').text();
+        this_w = this_w.substr(1,this_w.length-2)
+      }else{
+        this_w = this_w.text();
+      }
+      var sw = sort_word_method(this_w);
+      var diff = difference(sw, reste);
+      var x = $(this).find("span.w-reste");
+      if(x.length==0)
+        x = $(this).find("td.reste");
+      x.text(diff);
     });
     //pour chaque mot invisible, mettre à jour le reste
-    $("table.table-lemmes tbody tr.unwritable").each(function(){
+    var rows = $("table.table-lemmes tbody tr.unwritable");
+    if (rows.length ==0)
+      rows = $("ul.liste-anagrammes li.unwritable");
+    rows.each(function(){
       var this_w = $(this).find("a.add-word");
       if(window.play_mode=='C'){
         this_w = this_w.next('span.api').text();
@@ -158,15 +131,22 @@
       }else{
         //à l'aide du mot qui vient d'être supprimé,
         //on peut écrire ce mot: le rendre visible
-        $(this).find("td.reste").text(diff);
+        var x = $(this).find("span.w-reste");
+        if(x.length==0)
+          x=$(this).find("td.reste");
+        x.text(diff);
         $(this).removeClass("unwritable");
-        //$(this).show();
       }
     });
     $(w_elt.parent()).remove();
-    $("span.rest-words-count").text($("table.table-lemmes tbody tr:visible").length);
+    var visible_elements = $("ul.liste-anagrammes li:visible");
+    if(visible_elements.length==0){
+      visible_elements = $("table.table-lemmes tbody tr:visible");
+    }
+    $("span.rest-words-count").text(visible_elements.length);
     set_reste(reste);
   }
+
   // w jquery element, clicke event initier (link in first column)
   function chose_word(w){
     var sorted_chosen_word = ""
@@ -179,7 +159,7 @@
       sorted_chosen_word = sort_word(w.text());
       reste = difference(sorted_chosen_word, extract_reste());
       if (reste==false){
-        console.log("erreur l. 152 "+w.text()+" "+sorted_chosen_word+" "+reste);
+        console.log("erreur l. 181 "+w.text()+" "+sorted_chosen_word+" "+reste);
       }
     } else{
       api = w.next("span.api").text();
@@ -204,31 +184,52 @@
         // TODO: ici, ça coince. S'inspirer du "else" ci-dessous:
         //cacher toutes les lignes avec la classe unwritable et
         //mettre à jour tous les restes (null)
-        $("table.table-lemmes tbody tr").each(function(){
+        var rows = $("table.table-lemmes tbody tr");
+        if(rows.length == 0){
+          rows = $("ul.liste-anagrammes li");
+        }
+        rows.each(function(){
           $(this).addClass("unwritable");
           //$(this).find('td.reste').text(diff);
         });
       }
     }else{
-      $("table.table-lemmes tbody tr").each(function(){
+      // on parcourt la liste pour:
+      //  -mettre à jour les restes de chaque elt
+      //  -cacher les mots qui ne peuvent plus être écrits
+      var rows =  $("table.table-lemmes tbody tr");
+      if(rows.length==0)
+        rows = $("ul.liste-anagrammes li");
+      rows.each(function(){
         var reste_row =""
         var word_row="";
-        reste_row = $(this).find('td.reste').text();
+        reste_row = $(this).find('span.w-reste');
+        if(reste_row.length==0)
+          reste_row = $(this).find('td.reste');
+        reste_row=reste_row.text();
+        // console.log('hihihi');
+        // console.log(reste_row+" "+reste_row.length);
         if(window.play_mode=="A"){
           word_row = $(this).find("a.add-word").text();
         }else{
           word_row = $(this).find("a.add-word").next("span.api").text();
-          word_row = word_row.substr(1, word_row.length-2);
+          word_row = word_row.substring(1, word_row.length-2);
         }
         if( reste_row ==  "" || !can_write(sort_word(word_row), reste) ){
+          //on ne peut plus écrire le mot: le cacher
           $(this).addClass("unwritable");
           //$(this).hide();
         }
         else{
+          // ce mot peut encore être écrit
+          // on le laisse visible mais il faut mettre son reste à jour
           diff = difference(sorted_chosen_word, reste_row);
           if(diff==false)
-            console.log("erreur l.192: "+word_row+" "+ sorted_chosen_word+" "+reste_row);
-          $(this).find('td.reste').text(diff);
+            console.log("erreur l.231: *"+word_row+"* *"+ sorted_chosen_word+"* *"+reste_row+"*");
+          var c_reste = $(this).find('span.w-reste');
+          if(c_reste.length==0)
+            c_reste = $(this).find('td.reste');
+          c_reste.text(diff);
         }
       });
     }
@@ -243,6 +244,7 @@
   }
   function ui_add_chosen_word(w){
     var new_wb='';
+    //on crée le nouvel élément à ajouter au breadcrumb
     if(window.play_mode=='A')
       new_wb = $('<span class="word-block"><span class="word">'+w.text()+'</span><a href="?remove='+w.text()+'" class="remove_word" title="bye bye \''+w.text()+'\'!">x</a></span>');
     else{
@@ -256,13 +258,19 @@
     ,function(){
       $(this).find('a.remove_word').hide();
     });
+
     new_wb.find("a.remove_word").click(remove_word_click_event);
-    //todo: ajouter le manager de click sur a.remove_word
+    
     var last_word = $("div#chosen span.word-block:last");
     if(last_word.length==0)
       last_word = $("div#chosen p");
     last_word.after(new_wb);
-    $("span.rest-words-count").text($("table.table-lemmes tbody tr:visible").length);
+    // #TODO: ici, on va avoir un problème
+    var visible_elements = $("ul.liste-anagrammes li:not(.unwritable)");
+    if(visible_elements.length==0){
+      visible_elements = $("table.table-lemmes tbody tr:not(.unwritable)");
+    }
+    $("span.rest-words-count").text(visible_elements.length);
   }
   function remove_word_click_event(event){
     event.preventDefault();
@@ -272,38 +280,44 @@
     update_natures_count();
   }
   //************************** TRI **************************//
-  function alpha_compare(a, b, up = 1) {
-    a = $($(a).find('td')[0]).find('a').text().toLowerCase();
-    b = $($(b).find('td')[0]).find('a').text().toLowerCase();
+  function alpha_compare(a, b, up = 1, display="table") {
+    if(display=="table"){
+      a = $($(a).find('td')[0]).find('a').text().toLowerCase();
+      b = $($(b).find('td')[0]).find('a').text().toLowerCase();
+    }else{
+      a = $($(a).find('a.add-word')).text().toLowerCase();
+      b = $($(b).find('a.add-word')).text().toLowerCase();
+    }
     if(a == b)
       return 0;
     return up * (( b < a) ? 1 : -1);
-      // return up * (($(b).find('a').text().toLowerCase()) <
-      //         ($(a).find('a').text().toLowerCase()) ? 1 : -1);
   }
-  function length_compare(a, b, up = 1) {
-    a = $($(a).find('td')[0]).find('a').text().length;
-    b = $($(b).find('td')[0]).find('a').text().length;
+  function length_compare(a, b, up = 1, display="table") {
+    if(display=="table"){
+      a = $($(a).find('td')[0]).find('a').text().length;
+      b = $($(b).find('td')[0]).find('a').text().length;
+    }else{
+      a = $($(a).find('a.add-word')).text().length;
+      b = $($(b).find('a.add-word')).text().length;
+    }
     if(a == b)
       return 0;
     return up * (( b < a) ? 1 : -1);
-      // return up * (($(b).find('a').text().length) <
-      //         ($(a).find('a').text().length) ? 1 : -1);
   }
-  function nature_compare(a, b, up = 1) {
+  function nature_compare(a, b, up = 1, display="table") {
     a = $($(a).find('td')[1]).text();
     if (a.startsWith('flex-'))
       a = a.substr(5);
     b = $($(b).find('td')[1]).text();
     if (b.startsWith('flex-'))
       b = b.substr(5);
+    console.log("natc: *"+a+"* *"+b+"*")
     if(a == b)
       return 0;
     return up * (( b < a) ? 1 : -1);
-      // return up * (($(b).text()) <
-      //         ($(a).text()) ? 1 : -1);
+      
   }
-  function genre_compare(a, b, up = 1) {
+  function genre_compare(a, b, up = 1, display="table") {
     a = $($(a).find('td')[2]).text();
     b = $($(b).find('td')[2]).text();
     if(a == b)
@@ -312,7 +326,7 @@
       // return up * (($(b).text()) <
       //         ($(a).text()) ? 1 : -1);
   }
-  function nombre_compare(a, b, up = 1) {
+  function nombre_compare(a, b, up = 1, display="table") {
     a = $($(a).find('td')[3]).text();
     b = $($(b).find('td')[3]).text();
     if(a == b)
@@ -321,6 +335,8 @@
       // return up * (($(b).text()) <
       //         ($(a).text()) ? 1 : -1);
   }
+  sort_functions_index_light = {"alpha": alpha_compare, "length": length_compare};
+  
   sort_functions_index = {"alpha": alpha_compare, "length": length_compare, "nature": nature_compare, "genre": genre_compare, "nombre": nombre_compare};
   window.sort_functions = [];
   function set_sort_table_order() {
@@ -346,9 +362,27 @@
     // for(i=0;i<sort_functions.length;i++)
     //   console.log(sort_functions[i]);
   }
-  function sort_table_rows(a, b){
+
+  //sort_rows and sort_litems are twins
+  //the only difference is that sort_litems
+  //set the "display" parameter to "list"
+  //in order to get the correct jQuery selector
+  function sort_rows(a, b){
+    // console.log("sorting");
+    // console.log(a);
+    // console.log(b);
     for(i=0;i<sort_functions.length;i++){
+      // console.log(sort_functions[i]["func"]);
       var r = sort_functions_index[sort_functions[i]["func"]](a,b,sort_functions[i]['up']);
+      if (r!=0)
+        return r;
+    }
+    return 0;
+  }
+  function sort_litems(a,b){
+    for(i=0;i<sort_functions.length;i++){
+      // console.log(sort_functions[i]["func"]);
+      var r = sort_functions_index[sort_functions[i]["func"]](a,b,sort_functions[i]['up'], 'list');
       if (r!=0)
         return r;
     }
@@ -381,39 +415,9 @@
        event.preventDefault();
        word = event.target.innerText;
        chose_word($(event.target));
-       update_natures_count();
      });
      $("a.remove_word").click(remove_word_click_event);
-    // $("div#breadcrumb").append("<span>"+create_chosen_words_arg()+"</span>");
-    // handler to remove a word
-    // $("a.remove_word").click(function(event){
-    //     event.preventDefault();
-    //     removed = $(event.target).prev("span.word").get(0).innerText;
-    //     //add letters of the removed word to the ref_str
-    //     //server will sort em
-    //     reste = getUrlParameter("reste") + removed;
-    //     phrase = getUrlParameter("phrase");
-    //     display = getUrlParameter("display");
-    //     //remove the word, so that create_chosen_words_arg returns good result
-    //     $(event.target).parent("span.word-block").remove();
-    //     words = create_chosen_words_arg();
-    //     window.location.replace("/anagrammes/?words="+words+"&phrase="+phrase+"&reste="+reste);
-    // });
-    // handler to chose a word from the list
-    // $("a.add-word").click(function(event){
-    //   event.preventDefault();
-    //   // word newly chosen
-    //   word = event.target.innerText
-    //   reste = getUrlParameter("reste");
-    //   phrase = getUrlParameter("phrase");
-    //   words = create_chosen_words_arg();
-    //   // the "add" param contains the new word
-    //   // so that server is able to remove its letters from the rest
-    //   if(reste === undefined) //this is the first word chosen by user
-    //     window.location.replace("/anagrammes/?words="+words+"&add="+word+"&phrase="+phrase);
-    //   else
-    //     window.location.replace("/anagrammes/?words="+words+"&add="+word+"&phrase="+phrase+"&reste="+reste);
-    // });
+    
     //make chosen words manually sortable
     //so that user is able to chose their order
     $("#chosen").sortable();
@@ -422,7 +426,7 @@
     ,function(){
       $(this).find('a.remove_word').hide();
     });
-    //TODO: permettre de réorganiser l'ordre d'application des fonctions de tri
+    //TODO: done permettre de réorganiser l'ordre d'application des fonctions de tri
     $("p.sort-options").sortable();
 
 
@@ -437,23 +441,12 @@
       if(sort_idx == 1)
         up = -1;
       set_sort_table_order();
-      if (sort_functions.length > 0)
-        $("table.table-lemmes tbody tr").sort(sort_table_rows).appendTo('table.table-lemmes tbody');
+      if (sort_functions.length > 0){
+        xx=$("table.table-lemmes tbody tr").sort(sort_rows)  
+        xx.appendTo("table.table-lemmes tbody");
+      }
 
     });
-    // $("form[name=custom-word]").submit(function(event){
-    //   event.preventDefault();
-    //   // word newly chosen
-    //   word = $(event.target).find('input[name=add]').get(0).value;
-    //   reste = getUrlParameter("reste");
-    //   phrase = getUrlParameter("phrase");
-    //   words = create_chosen_words_arg();
-    //   // the "add" param contains the new word
-    //   // so that server is able to remove its letters from the rest
-    //   if(reste === undefined){ //this is the first word chosen by user
-    //     window.location.replace("/anagrammes/?words="+words+"&add="+word+"&phrase="+phrase);
-    //   }else
-    //     window.location.replace("/anagrammes/?words="+words+"&add="+word+"&phrase="+phrase+"&reste="+reste);
-    // });
+    
 
-  })
+  });

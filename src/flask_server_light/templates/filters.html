@@ -1,0 +1,22 @@
+<div class="filters">
+    <table>
+      <thead>
+        <tr>
+          <th></th><th><img src="static/images/eye.png" alt="visible"/></th><th><img src="static/images/eye-bar.png" alt="hidden"></th><th>#</th>
+        </tr>
+      </thead>
+    {% for nat in natures %}
+    <tr>
+      <td>{{nat}}</td>
+    <td>
+    <input type="checkbox" name="{{nat}}-shown" value="{{nat}}-shown" checked="checked">
+    </td>
+    <td>
+    <input type="checkbox" name="{{nat}}-hidden" value="{{nat}}-hidden">
+    </td>
+    <td class="nat-cnt"></td>
+  </tr>
+    {%endfor%}
+    </table>
+  </div>
+  

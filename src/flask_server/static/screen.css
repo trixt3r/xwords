@@ -84,3 +84,7 @@ div#devant-tout p{
   background:white;
   padding:12px;
 }
+
+span#reste{
+  font-weight:bold;
+}

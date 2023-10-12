@@ -9,6 +9,11 @@ from words_tuple import word_info_t
 GNODE_DEBUG = False
 
 class GenericNode(object):
+    """
+    Je suis bien dan la merde pour reprendre ce code, car je ne l'ai pas documenté....
+    Et ça fait plus d'un an que je n'y ai pas touché
+    
+    """
     data_init = dict
 
     def __init__(self, path="", data = None):
@@ -34,12 +39,10 @@ class GenericNode(object):
     def nk(self, x):
         return self.__class__.node_key(x)
 
-   
-
     def _setChild(self, path, child):
         if isinstance(path, list):
             path = "".join(path)
-        assert child.path == self.path+path, "error '{}'/'{}' trying to set child {} of node {} as {}".format(child.path, self.path+path, path, self.path, child.path)
+        assert child.path == self.path+path, f"error '{child.path}'/'{self.path+path}' trying to set child { path} of node {self.path} as {child.path}"
         self.children[path] = child
 
     def search(self, data_key):
@@ -89,7 +92,7 @@ class GenericNode(object):
                 if n[0]==reste[0]:
                     k = n
                     break
-            if k != "":
+            if k != "":  #  on doit créer un noeud intermédiaire
                 # print("####################1")
                 # need to split
                 i = 0
@@ -100,6 +103,11 @@ class GenericNode(object):
                 # print("common length: %d" % i)
                 if i== len(k):
                     # on devrait pas arriver ici
+                    # car le fils correspondant (parent_node.child(k))
+                    # aurait du être la valeur de retour de la ligne:
+                    # parent_node = self.search(nk), au début de l'algo.
+                    # c'est pourquoi, on y passe jamais
+                    # mais je laisse ça quand même, on ne sait jamais.
                     assert False, "erreur!!!"
                     pass
                 else:
@@ -110,6 +118,7 @@ class GenericNode(object):
             else:   
                 # print("####################2")
                 # on tombe ici quand arbre vide, ou bien suffixe à ajouter
+                # sur le noeud trouvé
                 new_node = self.__class__(nk, data)  #  create new node
                 parent_node._setChild(nk[len(parent_node.path):], new_node)
                 return new_node
@@ -121,7 +130,29 @@ class GenericNode(object):
             target_node.__class__.data_init()
         target_node.data[dk] = data
         return target_node
-    
+
+    def searchAnagram(self, sentence, keep_accents=True):
+        canonic = self.__class__.node_key(sentence)
+        ret = []
+        fifo = [(self, canonic)]  # (node, path remainder)
+        while len(fifo) > 0:
+            s = fifo.pop()
+            cn = s[0]  # curent node
+            cw = s[1]  # path remainder to explore this branch
+            # print("sAnag: start loop %s %s" % (str(cn), cw))
+            for c in cn.children:
+                # this child node can be reached
+                if cwapi.can_write(cw, c):
+                    child_node = cn.child(c)
+                    remainder = cwapi.difference(c, cw)
+                    # add node to resut list only if it contains data
+                    if child_node.hasData:
+                        ret.append(child_node)
+                    # try to reach this child node's children
+                    if len(remainder)>0:
+                        fifo.append((child_node, remainder))
+        return ret
+
     def count(self):
         x = 1
         for c in self.children:
@@ -196,27 +227,27 @@ class WITNode(CWordNode):
                 best = c[:i]
         return best
 
-    def searchAnagram(self, sentence):
-        canonic = self.__class__.node_key(sentence)
-        ret = []
-        fifo = [(self, canonic)]  # (node, path remainder)
-        while len(fifo) > 0:
-            s = fifo.pop()
-            cn = s[0]  # curent node
-            cw = s[1]  # path remainder to explore this branch
-            print("sAnag: start loop %s %s" % (str(cn), cw))
-            for c in cn.children:
-                # this child node can be reached
-                if cwapi.can_write(cw, c):
-                    child_node = cn.child(c)
-                    remainder = cwapi.difference(c, cw)
-                    # add node to resut list only if it contains data
-                    if len(child_node.data)>0:
-                        ret.append(child_node)
-                    # try to reach this child node's children
-                    if len(remainder)>0:
-                        fifo.append((child_node, remainder))
-        return ret        
+    # def searchAnagram(self, sentence):
+    #     canonic = self.__class__.node_key(sentence)
+    #     ret = []
+    #     fifo = [(self, canonic)]  # (node, path remainder)
+    #     while len(fifo) > 0:
+    #         s = fifo.pop()
+    #         cn = s[0]  # curent node
+    #         cw = s[1]  # path remainder to explore this branch
+    #         print("sAnag: start loop %s %s" % (str(cn), cw))
+    #         for c in cn.children:
+    #             # this child node can be reached
+    #             if cwapi.can_write(cw, c):
+    #                 child_node = cn.child(c)
+    #                 remainder = cwapi.difference(c, cw)
+    #                 # add node to resut list only if it contains data
+    #                 if child_node.hasData:
+    #                     ret.append(child_node)
+    #                 # try to reach this child node's children
+    #                 if len(remainder)>0:
+    #                     fifo.append((child_node, remainder))
+    #     return ret        
 
 
 class APINode(WITNode):

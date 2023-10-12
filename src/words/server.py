@@ -1,31 +1,42 @@
 import socket
 
 from _thread import start_new_thread
-# import threading
+import threading
 import pickle
 
+import server_global
+
 # serveur de "base de données"
-# récupèr les requêtes en provenance de flask (ou autre)
+# récupère les requêtes en provenance de flask (ou autre)
 # effectue la recherche
 # sérialise la réponse et la renvoie
 
 # V0.1
-# todo: plein de trucs, être thread safe, mise à jour à la volée, gestion
-# des options de recherche
+# todo: plein de trucs, 
+# être thread safe, 
+# mise à jour à la volée, 
+# gestion des options de recherche (tris) [pas très utile car on a déjà tri en Javascript]
+# gestion des mots manquants (chercher, ajouter, sauvegarder l'arbre)
+# gestion des ambiguïtés de prononciations
 
-with open("data/test_phon_index.dmp", "rb") as f:
+base_directory = "C:\\Users\\HP\\Documents\\code\\python\\words\\src\\words\\"
+
+# with open("data/test_phon_index.dmp", "rb") as f:
+with open(base_directory+"data\\test_phon_index.dmp", "rb") as f:
     phon_idx = pickle.load(f)
 
-with open('data/test_index.dmp', "rb") as f:
+# with open('data/test_index.dmp', "rb") as f:
+with open(base_directory+'data\\test_index.dmp', "rb") as f:
     idx = pickle.load(f)
 
-with open("data/gramm.dmp", "rb") as f:
+# with open("data/gramm.dmp", "rb") as f:
+with open(base_directory+"data\\gramm.dmp", "rb") as f:
     gramm = pickle.load(f)
 
 
-def threaded(c):
-    global idx
-    while True:
+def rq_server_threaded(c):
+
+    while not server_global.stop_switch:
         # data received from client
         data = c.recv(1024)
         if not data:
@@ -90,35 +101,33 @@ def threaded(c):
 
 
 def Main():
-    host = ""
-
-    # reverse a port on your computer
-    # in our case it is 12345 but it
-    # can be anything
-    port = 12346
+    
     connected = False
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     while connected is False:
         try:
-            s.bind((host, port))
+            s.bind((server_global.host, server_global.port))
         except OSError:
-            port += 1
+            server_global.port += 1
         else:
             connected = True
-    print("socket bound to port", port)
+    print("socket bound to port %d" % server_global.port)
     # put the socket into listening mode
     s.listen(5)
     print("socket is listening")
 
+    # cli thread to control server execution
+    threading.Thread(target=server_global.cli_threaded, args=(None,)).start()
+
     # a forever loop until client wants to exit
-    while True:
+    while not server_global.stop_switch:
         # establish connection with client
         c, addr = s.accept()
         # lock acquired by client
         # print_lock.acquire()
         print('Connected to :', addr[0], ':', addr[1])
         # Start a new thread and return its identifier
-        start_new_thread(threaded, (c,))
+        threading.Thread(target=rq_server_threaded, args=(c,)).start()
     s.close()
 
 

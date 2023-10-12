@@ -1,0 +1,88 @@
+{% macro chosen_word(w) -%}
+<span class="word-block"><span class="word">{{w}}</span> <a href="?remove={{w}}" class="remove_word" title="bye bye '{{w}}!'" >x</a></span>
+{% endmacro %}
+
+<!doctype html>
+<html lang="fr" dir="ltr">
+  <head>
+    <script src="/static/jquery-3.5.1.min.js"></script>
+    <script src="/static/jquery-ui-1.12.1/jquery-ui.min.js"></script>
+    <script src="/static/helpers.js"></script>
+    <script src="/static/anagrammes.js"></script>
+    <script src="/static/filters.js"></script>
+    <script src="/static/faq.js"></script>
+    <link rel="stylesheet" media="screen" type="text/css" href="/static/screen.css" />
+    <meta charset="utf-8">
+    <title>Anagrammes</title>
+  </head>
+  <body>
+    <div id="contents">
+<div id="header">
+
+</div>
+    <div id="left_column">
+
+    </div>
+    <div id="center">
+    {% if phrase %}
+  <h1>Anagrammes de : {{ phrase }}</h1>
+{% else %}
+  <h1>Entrez un mot ou une phrase:</h1>
+  {% endif %}
+  <form class="" method="get">
+    <label for="phrase">Entrez une phrase à anagrammer:</label>
+    <input type="text" name="phrase" value="" />
+    <input type="submit" name="submit" value="OK" />
+  </form>
+  <div id="breadcrumb">
+    {% if error_word %}
+    <p class="error"> Les lettres restantes ({{reste}}) ne permettent pas d'écrire le mot: "{{error_word}}"</p>
+    {% endif %}
+    <div id="chosen">
+      <p>Les mots suivants ont été choisis: </p>
+        {% for w in words %}
+          {%call chosen_word(w) %}
+          {%endcall%}
+        {% endfor %}
+    </div>
+</div>
+<div id="results-block">
+  {% if reste|length != 0 %}
+    <p><span class="rest-words-count">{{anagramms|length}}</span> mots avec les lettres restantes: <span id="reste">{{reste}}</span></p>
+    <p class="sort-options"> <span>Options de tri:</span>
+      {% include "sort_light.html" %}
+    </p>
+
+    {% include "anagrammes_liste.html" %}
+    <form name="custom-word" action="custom-word" method="get">
+      <label for="add">Entrez un mot inconnu de la liste:</label>
+      <input type="text" name="add" value="" />
+      <input type="submit" name="submit" value="OK" />
+    </form>
+  {% else %}
+    {%if phrase %}
+    <p>Il ne reste aucune lettres! Bien joué.</p>
+    {%endif %}
+  {% endif %}
+</div>
+  
+</div>
+
+<div id="right_column">
+<h1>FAQ</h1>
+<ul id="faq">
+  <li> <a class="question" id="q1">Pourquoi ça marche pas ?</a> </li>
+  <li> <a class="question" id="q2">Ça marche, mais pourquoi c'est tout moche ?</a> </li>
+  <li> <a class="question" id="q3">Pourquoi ça gère pas les accents ?</a> </li>
+</ul>
+
+</div>
+<div id="footer">
+
+</div>
+</div>
+<div id="devant-tout">
+  <p> <a href="#" class="exit-faq">X</a> </p>
+</div>
+  </body>
+</html>

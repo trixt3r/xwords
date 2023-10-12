@@ -1,0 +1,11 @@
+<div class="GNode">
+<p class="GNode_key">{{nk}}</p>
+<p class="GNode_data">Data:{{data|len}}</p>
+<p class="GNode_children">Children:
+    <ul class="Gnode_children">
+        {% for k,v in children %}
+            <li>{{k}} {{v.data|len}}</li>
+        {% endfor %}
+    </ul>
+</p>
+</div>

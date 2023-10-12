@@ -146,12 +146,7 @@ def getCanonicForm(word, keep_accents=False):
     return ret_string
 
 
-def list_utf_file(fname):
-    wl = []
-    with open(fname) as f:
-        for l in f.readlines():
-            wl.append(l[:-1])
-    return wl
+
 
 
 def difference(cw1, cw2):

@@ -77,3 +77,4 @@ def parcours_arbre_data(node):
         next.sort(reverse=True)
         for c in next:
             fifo.append(c_node.children[c])
+

@@ -54,6 +54,7 @@ def set_cookies(resp, phrase, mots_choisis, reste, display="list", keep_accents=
     if reste is not None:
         resp.set_cookie("reste", reste)
     if display is not None:
+        print("display: *%s*" % display)
         resp.set_cookie("display", display, max_age=90 * 60 * 60 * 24)
     if keep_accents is not None:
         resp.set_cookie("keep_accents", str(keep_accents), max_age=90 * 60 * 60 * 24)
@@ -69,7 +70,7 @@ def get_session_values(request):
     display = default_val(request.args.get('display'), request.cookies.get('display'))
     keep_accents = bool(default_val(request.args.get('keep_accents'), request.cookies.get('keep_accents')))
     contrepetri = bool(default_val(request.args.get('contrepetri'), request.cookies.get('contrepetri')))
-    anagr_mode = bool(default_val(default_val("A",request.args.get('anagr_mode'), request.cookies.get('anagr_mode'))))
+    anagr_mode = bool(default_val(default_val("A",request.args.get('anagr_mode')), request.cookies.get('anagr_mode')))
 
     if display not in ['list', 'table']:
         if display is not None:
@@ -99,7 +100,7 @@ def anagrammes():
     reste = None
     resp = None
     if phrase is None:
-        resp = make_response(render_template('anagrammes.html', display=display, natures=["nom", "adj", "verb"]))
+        resp = make_response(render_template('anagrammes.html', display=display))
         set_cookies(resp, None, None, None, display, keep_accents)
         return resp
 
@@ -163,10 +164,10 @@ def anagrammes():
     if phrase is None:
         resp = make_response(render_template('anagrammes.html', display=display))
     else:
-        print('########################')
-        print(anagramms)
-        print('########################')
-        resp = make_response(render_template('anagrammes.html', natures=["nom", "adj", "verb", "adverb"], anagramms=anagramms, reste=reste, words=mots_choisis, phrase=phrase, error_word=error_word, display=display))
+        # print('########################')
+        # print(anagramms)
+        # print('########################')
+        resp = make_response(render_template('anagrammes.html', natures=list(set([w.nature for w in results.items])), anagramms=anagramms, reste=reste, words=mots_choisis, phrase=phrase, error_word=error_word, display=display))
         set_cookies(resp, phrase, mots_choisis, reste, display, keep_accents)
     return resp
 
@@ -174,7 +175,10 @@ def anagrammes():
 @app.route('/contrepeteries')
 def contrepeteries():
     global phon_idx
-    mode, phrase, new_word, remove, mots_choisis, error_word, display, keep_accents, cookie_trafic, contrepetri = get_session_values(request)
+    phrase, new_word, remove, mots_choisis, error_word, display, keep_accents, cookie_trafic, contrepetri,mode = get_session_values(request)
+    #todo: nice hack but...
+    display="table"
+    print("##phrase= %s"%phrase)
     if phrase is None:
         resp = make_response(render_template('contrepetri.html', display=display))
         set_cookies(resp, None, None, None, display, keep_accents)
@@ -189,6 +193,9 @@ def contrepeteries():
         ambigus = request_resp[2]
     else:
         _found = [x for x in request_resp.items]
+    print("##################$$$$$$$$$$$$$$$$$$$$")
+    print(_found)
+    print("#$")
     lemmes = []
     request_canon = phon_getCanonicForm(request_resp.request)
     for w in _found:
