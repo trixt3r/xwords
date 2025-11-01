@@ -13,11 +13,13 @@ from words_tuple import word_t, word_info_t, desinences_t, flex_adj
 from verb import Verb_info
 from cw import binary_search
 
+BASE_URL = "https://fr.wiktionary.org/wiki/"
+# BASE_URL = "http://127.0.0.1:8080/viewer#wiktionary_fr_all_maxi_2024-06/A/"
 
 # extrait les infos du mot w depuis une page wiktionnary
 def extract_infos(w, all_champs_lex=[]):
     # TODO prepare w (unicode, espaces, accents)
-    page = requests.get("https://fr.wiktionary.org/wiki/%s" % w)
+    page = requests.get(f"{BASE_URL}{w}")
     # page = requests.get("http://192.168.43.125:8181/wiktionary_fr_all_nopic_2020-10/A/%s" % w)
     soup = BeautifulSoup(page.content, "html.parser")
     categram_spans = soup.find_all("span", class_="titredef", id=re.compile('^fr-'))
@@ -25,7 +27,7 @@ def extract_infos(w, all_champs_lex=[]):
     regex_nature = re.compile('[1-9]')
     print(1)
     for c in categram_spans:
-        print(c.text)
+        print(f" categram:{c.text}")
         s = c.find_next("span", class_="API", title="Prononciation API")
         if s is None:
             print('vide')
@@ -49,7 +51,7 @@ def extract_infos(w, all_champs_lex=[]):
                 info_t = word_info_t(nature, api, g_n[0], g_n[1], lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, mot=w)
                 print(info_t)
             elif c['id'].startswith("fr-adj"):
-                desin = _extract_adj_desinences(c, w)
+                desin = _extract_adj_desinences(c, w)  # TODO: ici, l'objet retourné devrait être "radicalisé"
                 if isinstance(desin, word_t):
                     # adjectif invariable
                     info_t = word_info_t(nature, api, "I", "I", lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, desinences=None, mot=w)
@@ -112,19 +114,59 @@ def append_bs4_error(w):
     f.close()
 
 
-def extract_verb_info_wiki(v):
-    # todo gérer les verbes intransitif et ceux qui n'ont que quelques pronoms
+
+##INFOS pour réparer extract_verb_info
+# $("a.mw-selflink") : repère les onglets active/pronominale (pour verbes réfléchis etc)
+#$("div#mw-content-text") #lebloc qui nous intéresse. Contient les onglets conjugaisons active/pronominale
+# le div renvoyé contient les onglets de conjugaison (active/personnelle)
+#plus simple: $("div#mb0og1") renvoie l'onglet 1 et $("div#mb0og2") l'onglet 2
+
+#pour les formes de conjugaison: personnelle, impersonnelle, pronominale...
+#
+#soup.find(id="mb0bt1").text: nom de la premiere forme
+#soup.find(id="mb0og1"): le div contenant les conjugaisons correspondantes
+
+def extract_verb_info_wiki(v:str):
+    """
+    Scrappe la conjugaison d'un verbe sur wiktionary
+    TODO: gérer les conjugaisons pronominales, impersonnelles, ...
+    TODO: gérer les variantes (exemple: é/è)
+    TODO: pour le mode impératif, erreur: comme il y a moins de formes, les index sont décalés: 
+    TODO: seul 2s, 1p et 2p devraient être valides. or, 1s renvoie 2s, 2s renvoie 1p, etc
+    TODO: verbes composés ?
+    :param v: le verbe à scrapper
+    :return: un dictionnaire formaté pour le constructeur de Verb_info
+    """
+    # todo gérer les verbes intransitifs et ceux qui n'ont que quelques pronoms
     # todo gérer les verbes composés ?
-    page = requests.get("https://fr.wiktionary.org/wiki/Annexe:Conjugaison_en_français/%s" % v)
+    page = requests.get(f"{BASE_URL}Conjugaison:français/{v}")
     # page = requests.get("http://192.168.43.125:8181/wiktionary_fr_all_nopic_2020-10/A/%s" % v)
     soup = BeautifulSoup(page.content, "html.parser")
 
+    i=1
+    while True:
+        conjug = soup.find(id=f"mb0bt{i}")
+        if conjug is None:
+            break
+        forme_name = conjug.text
+        print(f"id: mb0og{i}")
+        forme_div = soup.find(id=f"mb0og{i}")
+        print(f"{i} {forme_name} {hash(forme_div)}")
+        i+=1
+
+    
+
+    #extrait les infos d'un mode + temps
+    #TODO: verbes impersonnels
     def extract_temps(table):
         lines = table.find_all("tr")
         temps = lines[0].text.strip("\n")
         # print("****************** %s *******************" % temps)
         if temps in ["Passé", "Passé composé", "Plus-que-parfait", "Passé antérieur", "Futur antérieur"]:
             return (temps, [])
+        else:
+            print(temps)
+
         desinences = []
         i1 = 1
         i2 = 3
@@ -133,7 +175,7 @@ def extract_verb_info_wiki(v):
         if len(lines) == 7 or len(lines) == 4:
             for line in lines[1:]:
                 tds = line.find_all("td")
-                # print("################# %d %s" % (len(tds), l.text))
+                # print("################# %d %s" % (len(tds), line.text))
                 tds = line.find_all("td")
                 w = tds[i1].text.strip("\n").strip("\xa0").strip("\\")
                 api = tds[i2].text.strip("\n").strip("\\").strip("\xa0")
@@ -141,17 +183,28 @@ def extract_verb_info_wiki(v):
                 desinences.append((w, api))
             pass
         return (temps, desinences)
+
+    conjug = soup.find(id=f"mb0og1")
+    if conjug is None:
+        conjug = soup.find(id="mw-content-text")
+        if conjug is None:
+            print("S2")
+            return soup
+    #dictionnaire retourné
     v_info = {}
-    modes_imp = soup.find("span", id="Modes_impersonnels")
+
+    modes_imp = conjug.find("h3", id="Modes_impersonnels")
     if modes_imp is None:
-        return None
+        print("S1")
+        return soup
+    # Auxiliaires, participes, infinitif
     auxiliaire = ""
-    # todo: gérer le cas des doubles auxiliaires
     infinitif_html = modes_imp.find_next("a", title="infinitif")
     while not infinitif_html.name == 'tr':
         infinitif_html = infinitif_html.parent
     infinitif_html = infinitif_html.find_all("td")
     v_info["inf"] = word_t(v, infinitif_html[3].text.strip("\n").strip("\xa0").strip("\\"))
+    # TODO: gérer le cas des doubles auxiliaires
     auxiliaire = infinitif_html[4].text.strip("\n").strip("\\").strip("\xa0").strip("\n")
     v_info["aux"] = auxiliaire
     participe_row = modes_imp.find_next("a", title="participe")
@@ -163,27 +216,20 @@ def extract_verb_info_wiki(v):
     ppé = (participe_html[5].text, participe_html[6].text)
     ppé = (ppé[0].strip("\n").strip("\xa0"), ppé[1].strip("\n").strip("\xa0").strip("\\"))
     v_info["Part"] = {"Pr": ppt, "Pa": ppé}
-    indic = soup.find("span", id="Indicatif").find_next("div").find("table").find_all("table")
+    
+    verbes_modes = {"Indicatif":"In", "Subjonctif":"S", "Conditionnel":"C", "Impératif":"Im"}
     v_info['In'] = {}
     v_info['S'] = {}
     v_info['C'] = {}
     v_info['Im'] = {}
-    for t in indic:
-        temps = extract_temps(t)
-        v_info['In'][temps[0]] = temps[1]
-    subj = soup.find("span", id="Subjonctif").find_next("div").find("table").find_all("table")
-    for t in subj:
-        temps = extract_temps(t)
-        v_info['S'][temps[0]] = temps[1]
-    cond = soup.find("span", id="Conditionnel").find_next("div").find("table").find_all("table")
-    for t in cond:
-        temps = extract_temps(t)
-        v_info['C'][temps[0]] = temps[1]
-    impé = soup.find("span", id="Impératif").find_next("div").find("table").find_all("table")
-    for t in impé:
-        print(t)
-        temps = extract_temps(t)
-        v_info['Im'][temps[0]] = temps[1]
+
+    for mode in verbes_modes:
+        times = conjug.find('h3', id=mode).find_next("div").find("table").find_all("table")
+        # print("vide")
+        for t in times:
+            temps = extract_temps(t)
+            v_info[verbes_modes[mode]][temps[0]] = temps[1]
+    
     return v_info
 
 
@@ -191,7 +237,7 @@ def make_info_list(wlist=[]):
     """
     LA grosse fonction, qui prend une lsite de mots en entrée, et enrichit le dictionnaire
     en allant chercher les infos sur wiktionnary
-    en tous cas elle est senée le faire.
+    en tous cas elle est sensée le faire.
     """
     def make_info_save(courants, error):
         gramm = {}
@@ -422,7 +468,7 @@ def make_verb_list(verb_list=None):
 
 
 def get_categrams(w):
-    page = requests.get("https://fr.wiktionary.org/wiki/%s" % w)
+    page = requests.get(f"{BASE_URL}{w}")
     # page = requests.get("http://192.168.43.125:8181/wiktionary_fr_all_nopic_2020-10/A/%s" % w)
 
     soup = BeautifulSoup(page.content, "html.parser")
@@ -619,9 +665,11 @@ def _extract_nom_genre(categ):
         genre_t = 'M'
     else:
         genre_t = "?"
-    nombre = genre.find_next('span', class_='ligne-de-forme')
-    nombre_t = '?'
-    if nombre is not None:
+    nombre = genre.find_next('span', class_='ligne-de-forme')  # ici, ça buggue avec le nom "gamin"
+    # nombre_t = '?'
+    nombre_t = 'S'  #TODO ici solution scabreuse: on considère que par défaut, c'est singulier.
+                    #reste à voir si ça n'interfère pas avec les noms invariables
+    if nombre is not None:  #TODO ici ça semble bugger avec "gamin"
         nombre_t = nombre.text
         if nombre_t == 'pluriel':
             nombre_t = 'P'
@@ -674,7 +722,7 @@ def extract_word_phonetic(s):
 
 
 # def extract_verb_info(v):
-#     page=requests.get("https://conjugueur.reverso.net/conjugaison-francais-verbe-%s.html" % v)
+#     page=requests.get(f"https://conjugueur.reverso.net/conjugaison-francais-verbe-%s.html" % v)
 #     soup=BeautifulSoup(page.content,"html.parser")
 #     modes = soup.find_all('div', class_="blue-box-wrap")
 #     auxiliaire = soup.find_all('span', id="ch_lblAuxiliary")[0].text
@@ -774,3 +822,29 @@ def update_gramm(gramm_dict):
             wt_updated = word_info_t(nature=wt.nature, api=wt.api, genre=wt.genre, nbr=wt.nbr, lex=wt.lex, anto=wt.anto, hypo=wt.hypo, syno=wt.syno, desinences=wt.desinences, mot=w)
             flex.append(wt_updated)
         gramm_dict[w] = flex
+
+
+##############################################
+##########Session fin 2024
+###############################################
+
+
+def q_load_verb(v):
+    dic = extract_verb_info_wiki(v)
+    if dic is None:
+        print("Erreur 1")
+        return None
+    if not isinstance(dic, dict):
+        print("Erreur2")
+        return dic
+    verb = Verb_info(dic)
+    return verb
+
+def my_test():
+    acc = q_load_verb("accompagner")
+    aller = q_load_verb("aller")
+    assert acc.getMode("Indicatif:Présent:2s").ort == "accompagnes", acc.getMode("Indicatif:Présent:2s")
+    assert aller.getMode("Indicatif:Imparfait:2p").ort == "alliez"
+
+gamin=extract_infos("gamin")
+manger=extract_verb_info_wiki("manger")

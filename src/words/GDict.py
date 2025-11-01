@@ -22,6 +22,13 @@ class SortedDictWithFallback(Mapping):
         else:
             self.fallback[key] = value
 
+    def __delitem__(self, key):
+        index = np.searchsorted(self.keys, key)
+        if index != len(self.keys) and self.keys[index] == key:
+            del self.values[index]
+            del self.keys[key]
+        raise IndexError
+
     def __iter__(self):
         return iter(self.keys)
 

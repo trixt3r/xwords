@@ -5,12 +5,13 @@ import cw as cwapi
 from IPAIter import IPAStr
 # import unidecode
 from words_tuple import word_info_t
+
 # import build
 GNODE_DEBUG = False
 
 class GenericNode(object):
     """
-    Je suis bien dan la merde pour reprendre ce code, car je ne l'ai pas documenté....
+    Je suis bien dans la merde pour reprendre ce code, car je ne l'ai pas documenté....
     Et ça fait plus d'un an que je n'y ai pas touché
     
     """
@@ -20,7 +21,24 @@ class GenericNode(object):
         self.path = path
         self.data = self.__class__.data_init()
         if data is not None:
-            self.data[self.dk(data)] = data
+            if self.__class__.data_init == list:
+                if isinstance(data, list):
+                    for d in data:
+                        self.data.append(d)
+                else:
+                    self.data.append(data)
+            else:
+                self.data[self.dk(data)] = data
+        self.children = {}
+
+    def old__init__(self, path="", data = None):
+        self.path = path
+        self.data = self.__class__.data_init()
+        if data is not None:
+            if self.__class__.data_init == list:
+                self.data.append(data)
+            else:
+                self.data[self.dk(data)] = data
         self.children = {}
 
     def child(self, w):
@@ -77,7 +95,17 @@ class GenericNode(object):
     
     def addData(self,data):
         global GNODE_DEBUG
-        dk = self.dk(data)
+        #TODO: gérer le cas où data est une liste, vérifier que les clés sont les mêmes, si oui, ajouter toutes les données
+        # sinon, erreur.
+        dk = None
+        nk = None
+        if isinstance(data, list):
+            assert self.__class__.data_init == list, "erreur, on essaye d'ajouter une liste de données dans un noeud qui n'accepte qu'une donnée par clé"
+            key = set(self.dk(x) for x in data)
+            assert len(key) == 1, "plusieurs clés différentes dans la liste"
+            dk= key.pop()
+        else:
+            dk = self.dk(data)
         nk = self.nk(dk)
         if GNODE_DEBUG is True:
             print("*#*#*#*#*# %s %s" %(dk, nk))
@@ -128,7 +156,14 @@ class GenericNode(object):
 
         if target_node.data is None:
             target_node.__class__.data_init()
-        target_node.data[dk] = data
+        if self.__class__.data_init == list:
+            if isinstance(data, list):
+                for d in data:
+                    target_node.data.append(d)
+            else:
+                target_node.data.append(data)
+        else:
+            target_node.data[dk] = data
         return target_node
 
     def searchAnagram(self, sentence, keep_accents=True):
@@ -180,6 +215,28 @@ class GenericNode(object):
     def data_key(cls, n):
         return n
 
+class NewGrammNode(GenericNode):
+    @classmethod
+    def node_key(cls, n):
+        return n
+
+    @classmethod
+    def data_key(cls, n):
+        return n.mot
+
+    data_init = list
+
+class NewAPINode(GenericNode):
+    data_init = list
+    @classmethod
+    def node_key(cls, n):
+        #TODO il faudrait que cette logique soit dans n. propriété mise en cache ?
+        r = [c for c in cwapi.iter_api_phoneme(n)]
+        return IPAStr("".join(r))
+        # return "".join(r)
+    @classmethod
+    def data_key(cls, n):
+        return n.api
 
 class CWordNode(GenericNode):
     @classmethod
@@ -202,8 +259,8 @@ class WITNode(CWordNode):
     def data_key(cls, n):
         if not isinstance(n, list):
             n = [n]
-        assert isinstance(n[0], word_info_t), "{}".format(n[0])
-        assert len(set([x.mot for x in n])) == 1, "plusieurs mots différents"
+        # assert isinstance(n[0], word_info_t), f"{n[0]}"
+        assert len(set([x.mot for x in n])) == 1, f"plusieurs mots différents {set([x.mot for x in n])}"
         return n[0].mot
 
     # @classmethod
@@ -251,6 +308,7 @@ class WITNode(CWordNode):
 
 
 class APINode(WITNode):
+    data_init = list
     @classmethod
     def node_key(cls, n):
         # print('trying to get node key from:')
@@ -401,17 +459,30 @@ def create_api_tree(gramm=None):
 # par l'expérience que j'ai vécue.
 
 # gramm,root=create_tree()
+gramm = None
+root = None
+try:
+    f=open("data/gramm.dmp", "rb")
+    gramm=pickle.load(f)
+    f.close()
+except FileNotFoundError:
+    f=open("src/words/data/gramm.dmp", "rb")
+    gramm=pickle.load(f)
+    f.close()
 
-f=open("data/gramm.dmp", "rb")
-gramm=pickle.load(f)
-f.close()
-
-f=open("data/gnode_tree.dmp", "rb")
-root=pickle.load(f)
-f.close()
+try:
+    f=open("data/gnode_tree.dmp", "rb")
+    root=pickle.load(f)
+    f.close()
+except FileNotFoundError:
+    f=open("src/words/data/gnode_tree.dmp", "rb")
+    root=pickle.load(f)
+    f.close()
 
 del gramm['à'][0]
 
 root2=APINode()
 root2.addData(gramm['banquier'])
 gramm, root2 = create_api_tree(gramm)
+r = set((w.nature for l in gramm.values() for w in l))
+

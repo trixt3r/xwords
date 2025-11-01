@@ -3,81 +3,16 @@ os.environ["PATH"] += os.pathsep + 'C:/Users/HP/graphviz_bin'
 from pprint import pprint
 
 import pickle
-from graphviz import Source
+# from graphviz import Source
 from node import *
 idx=None
-with open('data/test_index.dmp', "rb") as f:
-    idx = pickle.load(f)
-
+if os.path.exists('data/test_index.dmp'):
+    with open('data/test_index.dmp', "rb") as f:
+        idx = pickle.load(f)
+else:
+    with open('src/words/data/test_index.dmp', "rb") as f:
+        idx = pickle.load(f)
 root = idx.root_node
-
-def translate_range(value, from_min, from_max,to_min,to_max):
-    # Figure out how 'wide' each range is
-    leftSpan = from_max - from_min
-    rightSpan = to_max - to_min
-    # Convert the left range into a 0-1 range (float)
-    valueScaled = float(value - from_min) / float(leftSpan)
-    # Convert the 0-1 range into a value in the right range.
-    return int(to_min + (valueScaled * rightSpan))
-
-def generate_graphviz(node, fname="data/test_graph.txt", depth=4):
-    fifo = [(node,'')]
-    file = open(fname, "w")
-    file.write("graph G {\n")
-    file.write("\t\toverlap = false;\n")
-    max_children=19
-    max_words=15
-    while len(fifo) > 0:
-        c_node,path = fifo.pop()
-
-        
-        nb_children=len(c_node.children)
-        nb_words=0
-        if c_node.data is not None:
-            nb_words = len(c_node.data)
-        # if c_node.data is not None and len(c_node.data)>max_words:
-        #     max_words = len(c_node.data)
-        # if c_node.children is not None and len(c_node.children)>max_children:
-        #     max_children = len(c_node.children)
-        g_node_color = translate_range(nb_children,0,max_children,0,255) * 65536 +\
-                        translate_range(nb_words,0,max_words,0,255)
-        g_node_name = path
-        if path=='':
-            g_node_name = "root"
-        # declare node
-        ftd_color=hex(g_node_color)[2:]
-        while len(ftd_color)<6:
-            ftd_color+="0"
-        file.write(f'\t\t"{g_node_name}" [color="#{ftd_color}"]\n')
-        #declare transitions
-        if depth!=-1 and len(path)<depth-1:
-            file.write(f'\t\t"{g_node_name}" -- ')
-            file.write('{')
-            for c in c_node.children:
-                child = c_node.children[c]
-                file.write(f'{child.cw}; ')
-            file.write('}')
-            file.write("\n")
-
-            next = [c for c in c_node.children]
-            next.sort(reverse=True)
-            for c in next:
-                # print(f"path = {path}{c}")
-                fifo.append((c_node.children[c],path+c))
-    print(f"{max_children} {max_words}")
-    file.write("}\n")
-    file.close()
-    return
-graph_file="data/test_graph.txt"
-# twopi -Tpng -O -Gsize=20,20 -Gdpi=1000 test_graph.txt
-# s = Source.from_file(graph_file)
-# s.view()
-
-
-
-######################################################################################################
-# LES GRAPHES N'ONT PAS DONNE GRAND CHOSE CAR ILS SONT BIEN TROP COMPLEXES ET GRAPHVIZ PLANTE
-######################################################################################################
 
 def parcours_arbre_data_liste(node):
     fifo = [node]
@@ -86,7 +21,20 @@ def parcours_arbre_data_liste(node):
         if c_node.data is not None:
             for w in c_node.data:
                 yield w
-        next = [c for c in c_node.children]
+        next = [c for c in c_node.children ]
+        next.sort(reverse=True)
+        for c in next:
+            fifo.append(c_node.children[c])
+
+def parcours_arbre_data_liste_filter(node,node_filter=lambda w:True,data_filter=lambda w: True):
+    fifo = [node]
+    while len(fifo) > 0:
+        c_node = fifo.pop()
+        if c_node.data is not None:
+            for w in c_node.data:
+                if data_filter(w):
+                    yield w
+        next = [c for c in c_node.children if node_filter(c_node.children[c])]
         next.sort(reverse=True)
         for c in next:
             fifo.append(c_node.children[c])
@@ -158,6 +106,7 @@ def hierarchise_set(values, sep="-"):
 # 
     return base_elts, _classes,_counters
 
+
 def trad(mot, elts, classes, sep=" "):
     ret = ""
     word_elts = mot.split(sep)
@@ -190,65 +139,372 @@ def split_list(l, filter):
     return y,n
 
 class ArboComp(object):
+    """
+    ArboComp (Arborescence Composer) - A class for analyzing and managing tokenized hierarchical data.
+    
+    This class tokenizes string values into component parts, tracks token usage patterns across 
+    different positions, and provides analysis of token distribution. It's particularly useful 
+    for analyzing linguistic patterns like grammatical categories that can be decomposed into 
+    sub-components (e.g., "flex-verb" -> ["flex", "verb"]).
+    
+    The class maintains:
+    - A vocabulary of unique tokens encountered
+    - A list of original values that were tokenized
+    - Statistics about token position patterns and usage
+    """
+    
     def __init__(self, tokenizer= lambda x:x.split('-'), joiner=lambda x: '-'.join(x)):
-        self.tokenizer = tokenizer
-        self.joiner = joiner
-        self.tokens=[]
-        self.values=set()
-        self.max_depth=0
+        """
+        Initialize the ArboComp analyzer.
+        
+        Args:
+            tokenizer (callable): Function to split a string into tokens. 
+                                Default splits on '-' character.
+            joiner (callable): Function to rejoin tokens back into a string.
+                              Default joins with '-' character.
+        """
+        self.tokenizer = tokenizer  # Function to break strings into component tokens
+        self.joiner = joiner        # Function to reconstruct strings from tokens
+        self.tokens = []            # Master list of all unique tokens encountered
+        self.values = []            # List of all original string values added
+        self.values_max_token_count = 0          # Maximum number of tokens in any single value
 
-    def comp_tokens(self,value):
-        self.values.add(value)
-        tokens=self.tokenizer(value)
-        ret=list()
+    def comp_tokens(self, value) -> list[int]:
+        """
+        Convert a string value to a list of token indices.
+        
+        Tokenizes the input value and returns the indices of each token 
+        in the master tokens list. Updates max_depth if this value has 
+        more tokens than previously seen.
+        
+        Args:
+            value (str): The string value to tokenize and convert to indices
+            
+        Returns:
+            list[int]: List of indices corresponding to each token in the value
+            
+        Example:
+            If tokens = ["flex", "verb", "nom"] and value = "flex-verb",
+            returns [0, 1]
+        """
+        tokens = self.tokenizer(value)
+        ret = list()
+        for t in tokens:
+            ret.append(self.tokens.index(t))
+        self.values_max_token_count = max(self.values_max_token_count, len(ret))
+        return ret
+
+    def add_tokens(self, value: str):
+        """
+        Add a new string value to the analyzer and extract its tokens.
+        
+        Tokenizes the input value and adds any new tokens to the master 
+        tokens list. The value itself is added to the values list.
+        
+        Args:
+            value (str): The string value to add and analyze
+            
+        Raises:
+            AssertionError: If the value has already been added to prevent duplicates
+            
+        Example:
+            add_tokens("flex-verb") will:
+            1. Add "flex-verb" to self.values
+            2. Add "flex" and "verb" to self.tokens (if not already present)
+        """
+        assert value not in self.values, f"la valeur {value} a déjà été ajoutée"
+        self.values.append(value)
+        tokens = self.tokenizer(value)
+        # Extract and register each individual token
         for t in tokens:
             if t not in self.tokens:
                 self.add_token(t)
-            ret.append(self.tokens.index(t))
-        self.max_depth=max(self.max_depth,len(ret))
-        return ret
-    
-    def add_tokens(self, value):
-        self.comp_tokens(value)
     
     def add_token(self, t):
+        """
+        Add a single token to the master tokens list.
+        
+        Args:
+            t (str): The token to add to the vocabulary
+        """
         self.tokens.append(t)
     
-    def decomp_token(self,value):
+    def decomp_token(self, value: list[int]) -> str:
+        """
+        Convert a list of token indices back to the original string representation.
+        
+        Takes a list of indices and reconstructs the original string by 
+        looking up each token and joining them with the joiner function.
+        
+        Args:
+            value (list[int]): List of token indices to convert back to string
+            
+        Returns:
+            str: The reconstructed string value
+            
+        Example:
+            If tokens = ["flex", "verb", "nom"] and value = [0, 1],
+            returns "flex-verb"
+        """
         ret = list()
         for v in value:
             ret.append(self.tokens[v])
         return self.joiner(ret)
 
     def analyze(self):
-        # pr chq sbl, compter le nombre de fois où il apparaît à chaque position
-        _counters= {}
+        """
+        Perform comprehensive analysis of token usage patterns across all values.
+        
+        This method analyzes how tokens are distributed across positions and computes
+        various statistics about token usage patterns. For each token, it tracks:
+        
+        - Position-specific counts (how often it appears at each position 0, 1, 2, ...)
+        - INIT count: how often the token appears at the start of values
+        - FIN count: how often the token appears at the end of values  
+        - STATE bitmask: which positions the token can appear in (as a bit field)
+        
+        Returns:
+            tuple: A tuple containing:
+                - _counters (dict): Maps each token to a list containing:
+                    [pos0_count, pos1_count, ..., posN_count, init_count, fin_count, state_bitmask]
+                - token_by_état (dict): Maps each unique state bitmask to list of tokens with that state
+                
+        The state bitmask uses powers of 2 to encode positions:
+        - Position 0: bit 0 (value 1)
+        - Position 1: bit 1 (value 2) 
+        - Position 2: bit 2 (value 4)
+        - etc.
+        
+        Special derived sets computed internally:
+        - finaux: tokens that ONLY appear at the end of values
+        - initiaux: tokens that ONLY appear at the start of values
+        """
+        # Initialize counters for each token: [pos_counts..., init_count, fin_count, state_bitmask]
+        counters = {}
         self.tokens.sort()
         self.values.sort()
-        for e in self.tokens:
-            _counters[e]= [0] * (self.max_depth + 1 + 1 + 1)
-        INIT = self.max_depth
-        FIN = self.max_depth+1
-        STATE = self.max_depth+2
+        for tok in self.tokens:
+            counters[tok] = [0] * (self.values_max_token_count + 1 + 1 + 1)
         
+        # Define special indices in the counter arrays
+        INIT = self.values_max_token_count      # Index for start-of-value count
+        FIN = self.values_max_token_count + 1   # Index for end-of-value count  
+        STATE = self.values_max_token_count + 2 # Index for position bitmask
+        
+        # Analyze each value and update token statistics
         for v in self.values:
-            v_elts = self.tokenizer(v)
-            for i, elt in enumerate(v_elts):
-                _counters[elt][i]+=1
-                if i== len(v_elts)-1:
-                    _counters[elt][FIN]+=1
-                if i==0:
-                    _counters[elt][INIT]+=1
-                _counters[elt][STATE] = _counters[elt][STATE] | pow(2,i)
-        for k,v in _counters.items():
+            tokens = self.tokenizer(v)
+            for i, token in enumerate(tokens):
+                # Count occurrence at this position
+                counters[token][i] += 1
+                
+                # Track if this token appears at the end of this value
+                if i == len(tokens) - 1:
+                    counters[token][FIN] += 1
+                    
+                # Track if this token appears at the start of this value
+                if i == 0:
+                    counters[token][INIT] += 1
+                    
+                # Update the state bitmask to include this position
+                counters[token][STATE] = counters[token][STATE] | pow(2, i)
+        
+        # Compute derived statistics
+        for k, v in counters.items():
             pass
-        finaux = {k for k,v in _counters.items() if v[FIN]==sum(v[:self.max_depth])}
-        initiaux = {k for k,v in _counters.items() if v[INIT]==sum(v[:self.max_depth])}
-        états = set(v[STATE] for k,v in _counters.items())
-        token_by_état = {e:[k for k,v in _counters.items() if v[STATE]==e] for e in états}
-        return _counters, token_by_état
+            
+        # Find tokens that appear ONLY at the end (fin_count equals total_count)
+        finaux = list({k for k, v in counters.items() if v[FIN] == sum(v[:self.values_max_token_count])})
 
-natures = {'pronom-rel', 'flex-verb', 'nom', 'flex-art-déf', 'var-typo', 'adj-dém', 'part', 'flex-art-indéf', 'flex-adj-pos', 'adj-indéf', 'prénom', 'nom-pr', 'pronom-pers', 'adj', 'adv', 'verb', 'art-part', 'flex-adj', 'flex-adj-indéf', 'onoma', 'adj-int', 'conj-coord', 'flex-adj-dém', 'adv-int', 'flex-nom', 'interj', 'symb', 'flex-pronom-dém', 'adv-rel', 'suf', 'pronom-dém', 'flex-pronom-rel', 'flex-pronom-pers', 'phr', 'flex-prép', 'lettre', 'adj-num', 'pronom-int', 'prép', 'flex-pronom-int', 'adj-rel', 'adj-pos', 'flex-adv', 'pronom', 'nom-fam', 'pronom-indéf', 'flex-pronom-indéf', 'art-indéf', 'flex-adj-int', 'art-déf', 'conj'}
-arbo = ArboComp()
-for n in natures:
-    arbo.add_tokens(n)
+        # Find tokens that appear ONLY at the start (init_count equals total_count)
+        initiaux = list({k for k, v in counters.items() if v[INIT] == sum(v[:self.values_max_token_count])})
+
+        # Collect all unique state patterns (position bitmasks)
+        états = set(v[STATE] for k, v in counters.items())
+        
+        # Group tokens by their state pattern
+        token_by_état = {e: [k for k, v in counters.items() if v[STATE] == e] for e in états}
+
+        # MAP token_state (1,2,3,6) TO token count for this state
+        token_count_by_état = {counters[k][-1]:len([t for t in counters if counters[t][-1]==counters[k][-1]]) for k in counters}
+        return counters, token_by_état,initiaux,finaux
+    
+    class arbo_state(object):
+        def __init__(self, token, positions:list[int], start_of_value:int=0, end_of_value:int=0):
+            self.token = token
+            
+            self.bitmask = sum(1 << p for p in positions)
+            # self.start_of_value = start_of_value
+            # self.end_of_value = end_of_value
+            self.valid_tokens = set()
+            self.position_counters={}
+            self.start_counter = start_of_value
+            self.end_counter = end_of_value
+
+        def add_token(self, token:str):
+            self.valid_tokens.add(token)
+        
+        def inc_counters(self,pos,at_start,at_end):
+            if pos not in self.position_counters:
+                self.position_counters[pos]=0
+                self.bitmask |= (1 << pos)
+            self.position_counters[pos]+=1
+            if at_start:
+                self.start_counter+=1
+            if at_end:
+                self.end_counter+=1
+
+    def analyze_new(self):
+        """
+        Perform comprehensive analysis of token usage patterns across all values.
+        
+        This method analyzes how tokens are distributed across positions and computes
+        various statistics about token usage patterns. For each token, it tracks:
+        
+        - Position-specific counts (how often it appears at each position 0, 1, 2, ...)
+        - INIT count: how often the token appears at the start of values
+        - FIN count: how often the token appears at the end of values  
+        - STATE bitmask: which positions the token can appear in (as a bit field)
+        
+        Returns:
+            tuple: A tuple containing:
+                - _counters (dict): Maps each token to a list containing:
+                    [pos0_count, pos1_count, ..., posN_count, init_count, fin_count, state_bitmask]
+                - token_by_état (dict): Maps each unique state bitmask to list of tokens with that state
+                
+        The state bitmask uses powers of 2 to encode positions:
+        - Position 0: bit 0 (value 1)
+        - Position 1: bit 1 (value 2) 
+        - Position 2: bit 2 (value 4)
+        - etc.
+        
+        Special derived sets computed internally:
+        - finaux: tokens that ONLY appear at the end of values
+        - initiaux: tokens that ONLY appear at the start of values
+        """
+        # Initialize counters for each token: [pos_counts..., init_count, fin_count, state_bitmask]
+        counters = {}
+        self.tokens.sort()
+        self.values.sort()
+        counters_new = {}
+        for tok in self.tokens:
+            counters[tok] = [0] * (self.values_max_token_count + 1 + 1 + 1)
+            counters_new[tok] = ArboComp.arbo_state(token=tok, positions=[], start_of_value=0, end_of_value=0)
+
+        
+        # Define special indices in the counter arrays
+        INIT = self.values_max_token_count      # Index for start-of-value count
+        FIN = self.values_max_token_count + 1   # Index for end-of-value count  
+        STATE = self.values_max_token_count + 2 # Index for position bitmask
+        
+        # Analyze each value and update token statistics
+        for v in self.values:
+            tokens = self.tokenizer(v)
+            for i, token in enumerate(tokens):
+                # Count occurrence at this position
+                counters[token][i] += 1
+                counters_new[token].inc_counters(pos=i, at_start=(i==0), at_end=(i==len(tokens)-1))
+                # Track if this token appears at the end of this value
+                if i == len(tokens) - 1:
+                    counters[token][FIN] += 1
+                    
+                # Track if this token appears at the start of this value
+                if i == 0:
+                    counters[token][INIT] += 1
+                    
+                # Update the state bitmask to include this position
+                counters[token][STATE] = counters[token][STATE] | pow(2, i)
+        
+        # Compute derived statistics
+        for k, v in counters.items():
+            pass
+            
+        # Find tokens that appear ONLY at the end (fin_count equals total_count)
+        finaux = list({k for k, v in counters.items() if v[FIN] == sum(v[:self.values_max_token_count])})
+
+        # Find tokens that appear ONLY at the start (init_count equals total_count)
+        initiaux = list({k for k, v in counters.items() if v[INIT] == sum(v[:self.values_max_token_count])})
+
+        # Collect all unique state patterns (position bitmasks)
+        états = set(v[STATE] for k, v in counters.items())
+        
+        # Group tokens by their state pattern
+        token_by_état = {e: [k for k, v in counters.items() if v[STATE] == e] for e in états}
+
+        # MAP token_state (1,2,3,6) TO token count for this state
+        token_count_by_état = {counters[k][-1]:len([t for t in counters if counters[t][-1]==counters[k][-1]]) for k in counters}
+        return counters, token_by_état,initiaux,finaux, counters_new
+
+
+# from pprint import pprint
+# natures = {'pronom-rel', 'flex-verb', 'nom', 'flex-art-déf', 'var-typo', 'adj-dém', 'part', 'flex-art-indéf', 'flex-adj-pos', 'adj-indéf', 'prénom', 'nom-pr', 'pronom-pers', 'adj', 'adv', 'verb', 'art-part', 'flex-adj', 'flex-adj-indéf', 'onoma', 'adj-int', 'conj-coord', 'flex-adj-dém', 'adv-int', 'flex-nom', 'interj', 'symb', 'flex-pronom-dém', 'adv-rel', 'suf', 'pronom-dém', 'flex-pronom-rel', 'flex-pronom-pers', 'phr', 'flex-prép', 'lettre', 'adj-num', 'pronom-int', 'prép', 'flex-pronom-int', 'adj-rel', 'adj-pos', 'flex-adv', 'pronom', 'nom-fam', 'pronom-indéf', 'flex-pronom-indéf', 'art-indéf', 'flex-adj-int', 'art-déf', 'conj'}
+
+# arbo = ArboComp()
+# for n in natures:
+#     arbo.add_tokens(n)
+
+# for n in arbo.values:
+#     print(n , arbo.comp_tokens(n))
+
+# pprint(arbo.tokens)
+
+# for n in arbo.values:
+#     print(n , arbo.comp_tokens(n))
+
+# counters, token_by_état,initiaux,finaux = arbo.analyze()
+
+# solos=[x for x in initiaux if x in finaux]
+# endings = [x for x in finaux if x not in solos]
+
+
+
+
+# counters["indéf"][-1]==4+2 
+
+datas = collect_and_count_attribute_values(root, 'nature')
+
+def flagiz(values: list[int]) -> int:
+    ret = 0
+    offset=0
+    for v in values:
+        l = v.bit_length()
+        ret = v<<offset | ret
+        offset+=l
+    return ret
+
+#NOTE fausse route
+def testo():
+    ret = {}
+    for nature in arbo.values:
+        h = nature.split('-')
+        current = []
+        for t in h:
+            for i,state in enumerate(token_by_état):
+                if t in token_by_état[state]:
+                    current.append(token_by_état[state].index(t))
+                    break
+            ret[nature] = current
+    return ret
+
+#NOTE fausse route
+def testo2(token_by_état, ordre):
+    ret = {}
+    for nature in arbo.values:
+        h = nature.split('-')
+        current = []
+        i = 0
+        while i < len(h):
+            for j,o in enumerate(ordre):
+                state = token_by_état[o]
+                if h[i] in state:
+                    current.append(state.index(h[i]))
+                    i+=1
+                    break
+                else:
+                    if j>i<len(h):
+                        current.append(-1)
+            ret[nature] = current
+    return ret
+
+
+

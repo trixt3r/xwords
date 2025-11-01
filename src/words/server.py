@@ -5,6 +5,7 @@ import threading
 import pickle
 
 import server_global
+import ResultSet
 
 # serveur de "base de données"
 # récupère les requêtes en provenance de flask (ou autre)
@@ -19,7 +20,8 @@ import server_global
 # gestion des mots manquants (chercher, ajouter, sauvegarder l'arbre)
 # gestion des ambiguïtés de prononciations
 
-base_directory = "C:\\Users\\HP\\Documents\\code\\python\\words\\src\\words\\"
+# base_directory = "C:\\Users\\vincent\\OneDrive\\Documents\\code\\python\\words\\src\\words\\"
+base_directory = "C:\\Users\\Dell\\Desktop\\code\\python\\words\\src\\words\\"
 
 # with open("data/test_phon_index.dmp", "rb") as f:
 with open(base_directory+"data\\test_phon_index.dmp", "rb") as f:
@@ -44,19 +46,28 @@ def rq_server_threaded(c):
             # lock released on exit
             # print_lock.release()
             break
-        mode_options = data[0]
 
-        print("mode_options = " + str(mode_options))
+        mode_options = data[0]
         keep_accents = (mode_options & 2) == 2
-        rs = None
+        rs:ResultSet = None
         data = data[1:]
         words_request = data.decode('utf8')
+        print("mode_options = " + str(mode_options))
         print("request for %s " % words_request)
+        #############################################
+        #TODO: si les données sont en phonétique, forcer mode phonétique
+
+        #############################################
+        # mode 0 == mode anagrammes (lettres)
         if mode_options & 1 == 0:
+
             rs = idx.search_anagrammes(data.decode('utf8'), keep_accents=keep_accents)
             print("%d" % len(rs._items))
             # for x in rs.items:
             #     print(x.mot)
+
+            #############################################
+            # TODO: better serialization ?
             # seralize
             data = pickle.dumps(rs)
             # on send data length
@@ -64,18 +75,22 @@ def rq_server_threaded(c):
             # send data
             c.send(data)
         else:
+            # mode 1 == mode phonétique
             # TODO:
             # faire une liste de mots,  chercher les inconnus, désambiguation (hétérophones)
             words = data.decode('utf8').split(" ")
+
+            # ici on trie les mots: ok, ambigus, inconnus
             w_ok = []
             w_unknown = []
             w_ambigus = []
             for w in words:
                 if w not in gramm:
                     # mot inconnu:
-                    # todo: aller le chercher sur wiktionnary
+                    # todo: le demander au crawler ?
                     w_unknown.append(w)
                     continue
+
                 wg = gramm[w]
                 if len(set([x.api for x in wg])) == 1:
                     # mot connu, une seule prononciation
@@ -84,14 +99,20 @@ def rq_server_threaded(c):
                     # mot connu, mais ambigü: plusieurs prononciations possibles
                     w_ambigus.append(wg)
             if len(w_ambigus) == 0 and len(w_unknown) == 0:
+                # meilleur cas: tous les mots sont connus, et ont une unique prononciation
                 rqst = ""
                 for w in w_ok:
                     rqst += w[0].api
                 rqst = rqst.replace('.', '')
                 rs = phon_idx.search_anagrammes(rqst)
             else:
+                # autrement, on renvoie trois listes
+                # les mots non trouvés seront gérés je sais pas comment ?
+                # les ambigus peuvent etre traités avec une page/un popup intermédiaire de désambiguation
                 rs = (w_ok, w_unknown, w_ambigus)
             data = pickle.dumps(rs)
+            #TODO: better serialization ?
+            #serialize
             # on envoie la longueur du paquet de données
             c.send(len(data).to_bytes(4, byteorder='big'))
             # on envoie les données

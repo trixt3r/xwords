@@ -1,4 +1,5 @@
 from collections import namedtuple
+import functools
 
 # import unicodedata
 
@@ -45,6 +46,8 @@ def reform_desinences(des, cas=None, info=None):
         ret = {}
         if info == "api":
             return [des.__getattribute__(cas).api for cas in ['ms', 'mp', 'fs', 'fp']]
+        
+        # ret={cas:reform_desinences(des,cas) for cas in ['ms', 'mp', 'fs', 'fp']}
         for cas in ['ms', 'mp', 'fs', 'fp']:
             ret[cas] = reform_desinences(des, cas)
         if info is None:
@@ -83,6 +86,16 @@ class Word(object):
             if not x == ".":
                 yield x
 
+class flex_word:
+
+    def __init__(self, flextable,key):
+        self.flextable=flextable
+        self.key = key
+        
+    @functools.lru_cache
+    def __str__(self):
+        return self.flextable[self.key][0]
+
 class flex_adj:
     def __init__(self, wi_adj, cas):
         assert isinstance(wi_adj, word_info_t), 'wi_adj must be an instance of word_info_t'
@@ -108,3 +121,23 @@ def fusion_word_info_t(w1, w2):
     for d in ["ms", "mp", "fs", "fp"]:
         assert (w1.desinences == [] and w2.desinences == []) or w1.desinences.__getattribute__(d) == w2.desinences.__getattribute__(d), "probleme desinences {} {}".format(str(w1), str(w2))
     return word_info_t(w1.nature, w1.api, w1.genre, w1.nbr, list(set([x for x in w1.lex]+[x for x in w2.lex])), list(set(w1.anto + w2.anto)), list(set(w1.hypo+w2.hypo)), list(set(w1.syno+w2.syno)), w1.desinences, w1.mot)
+
+def longest_sequence(sequences:list[str], comp_func=lambda c1,c2:c1==c2)->int:
+    char_idx=0
+    stop = False
+    while char_idx<len(sequences[0]):
+        for s in sequences[1:]:
+            if char_idx>=len(sequences[0]) or char_idx>=len(s) or not comp_func(s[char_idx], sequences[0][char_idx]):
+                stop=True
+        if stop:
+            break
+        char_idx += 1
+    return char_idx
+
+def compress_flex(sequences:dict[str:str], radical_key="rad", comp_func=lambda c1,c2:c1==c2)->tuple:
+    length = longest_sequence(list(sequences.values()), comp_func)
+    radical = list(sequences.values())[0][:length]
+    #  return tuple(radical,{terminaisons})
+    ret= {k:v[length:] for k,v in sequences.items()}
+    ret[radical_key] = radical
+    return ret

@@ -66,7 +66,7 @@ def init_dict(dico_txt="liste.de.mots.francais.frgut.utf8.txt"):
         #l = f.readline()
         l = l[:-1]
         w = l
-        canon = cw.getCanonical(l)
+        canon = cw.getCanonicForm(l)
         if not (canon in canonical):
             canonical[canon] = [w]
         else:
@@ -77,6 +77,19 @@ def init_dict(dico_txt="liste.de.mots.francais.frgut.utf8.txt"):
     f.close()
     return canonical
 
+
+def load_words_list(dico_txt="liste.de.mots.francais.frgut.utf8.txt"):
+    try:
+        f=io.open(dico_txt, "r", encoding="utf-8")
+    except:
+        f=io.open("src/words/"+dico_txt, "r",encoding="utf-8")
+    ret_list=list()
+    c=0
+    for line in f:
+        
+        ret_list.append(line.strip())
+    f.close()
+    return ret_list
 
 def binomial_coeff(x, y):
     """Return binomial coefficient of x and y"""

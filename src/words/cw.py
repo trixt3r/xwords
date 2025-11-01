@@ -61,12 +61,13 @@ def sanitize_word(word, keep_accents=False):
     return word
 
 
-def getCanonicForm(word, keep_accents=False, generics={}):
+def getCanonicFormComp(word, keep_accents=False, generics={}):
     """Return canonic version of word
     lower word, remove white spaces and diverse types of typographics signs,
     and sorts its letters;
     accented letters shall be keeped or not"""
     word = sanitize_word(word, keep_accents)
+
     if not len(generics) == 0:
         replace_generics(word, generics)
     s1 = {}
@@ -75,6 +76,14 @@ def getCanonicForm(word, keep_accents=False, generics={}):
             s1[c] = s1[c] + 1
         else:
             s1[c] = 1
+    return s1
+
+def getCanonicForm(word, keep_accents=False, generics={}):
+    """Return canonic version of word
+    lower word, remove white spaces and diverse types of typographics signs,
+    and sorts its letters;
+    accented letters shall be keeped or not"""
+    s1 = getCanonicFormComp(word,keep_accents,generics)
     ret_string = ""
     keys = list(s1.keys())
     keys.sort()
@@ -84,6 +93,7 @@ def getCanonicForm(word, keep_accents=False, generics={}):
 
 
 def phon_getCanonicForm(word, keep_accents=False, generics={}):
+    assert not "(" in word, "optional phonemes not yet handled"
     phonemes = [p for p in iter_api_phoneme(word)]
     phonemes.sort()
     return "".join(phonemes)
@@ -169,11 +179,19 @@ def scan_sentence_for_api(words: str, gramm: dict):
     return (found, ambiguous, not_found)
 
 
+####################PHONETIQUE###################
+
+
+
 def iter_api_syllabes(api):
     """Segments an api word in syllabes
     example: bonjour,  bɔ̃.ʒuʁ gives ("bɔ̃"","ʒuʁ")
     """
+    #TODO: gérer les phonemes optionnels (encadrés par des parenthèses)
     for s in api.split("."):
+        if "(" in s or ")" in s:
+            s=s.replace(["(",")"], "")
+            Warning(f"optional phonemes not yet handled. stripped {s}")
         yield s
 
 
@@ -181,16 +199,22 @@ def iter_api_phoneme(api):
     """Segments an api word in phonemes
     example: bonjour,  bɔ̃.ʒuʁ gives ("b","ɔ̃","ʒ","u","ʁ")
     """
+    #TODO: gérer les phonemes optionnels (encadrés par des parenthèses)
     length = len(api)
     i = 0
     while i < length:
         cat = unicodedata.category(api[i])
+        if api[i] == "(" or api[i] == ")":
+            Warning(f"optional phonemes not yet handled. stripped {api[i]}")
+            i += 1
+            continue
         # skip points
         if cat == 'Po':
             i += 1
             continue
         if not cat == 'Ll':
             # TODO: not sure if we shall pass here...
+            Warning(f"unexpected character in api: {api[i]}")
             yield api[i]
         else:
             # got an accented letter
@@ -202,6 +226,31 @@ def iter_api_phoneme(api):
                 yield api[i]
         i += 1
 
+
+#  ce code devrait être utile pour rendre transparent iter_api_syllabes, iter_api_phonemes, iter_ort:
+# class Astr(str):
+#     def __init__(self, value, step=1):
+#         super().__init__()
+#         self.value = value
+#         self.step = step
+
+#     def __iter__(self):
+#         self._index = 0
+#         return self
+
+#     def __next__(self):
+#         if self._index >= len(self.value):
+#             raise StopIteration
+#         result = self.value[self._index:self._index + self.step]
+#         self._index += self.step
+#         return result
+
+# # Exemple d'utilisation
+# astr = Astr("Hello, World!", step=2)
+# for c in astr:
+#     print(c)
+
+#######################################################
 
 def read_words_list(fname="data/words_list.dmp"):
     f = open(fname, "rb")

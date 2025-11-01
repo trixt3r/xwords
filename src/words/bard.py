@@ -191,7 +191,9 @@ root=Node()
 root.insert("banque")
 root.insert("banc")
 root.insert("banques")
+# split requis
 root.insert("banquets")
+# juste mettre à jour les données du noeud
 root.insert("banquet")
 
 """
