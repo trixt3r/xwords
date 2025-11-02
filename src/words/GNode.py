@@ -215,6 +215,33 @@ class GenericNode(object):
     def data_key(cls, n):
         return n
 
+class GenericListNode(GenericNode):
+    data_init = list
+    def __eq__(self, other):
+        if not isinstance(other, GenericListNode):
+            return False
+        if self.path != other.path:
+            return False
+        if len(self.data) != len(other.data):
+            return False
+        
+        for d in self.data:
+            if d not in other.data:
+                return False
+        for d in other.data:
+            if d not in self.data:
+                return False
+
+        if len(self.children) != len(other.children):
+            return False 
+           
+        for path, node in self.children.items():
+            if not path in other.children:
+                return False
+            if not node == other.children[path]: 
+                return False
+        return True
+
 class NewGrammNode(GenericNode):
     @classmethod
     def node_key(cls, n):

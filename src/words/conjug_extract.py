@@ -168,11 +168,12 @@ class ConjugExtract(object):
                 #NOTE on a la forme avec « y » et la forme avec « i »
                 v_info = all_verb_infos[0]
             else:
+                #NOTE a priori forme active et pronominale
                 if not None in all_verb_infos:
                     ok = compare_verb_info(all_verb_infos[0], all_verb_infos[1])
                     if not ok:
-                        warnings.warn(f"différence entre les deux formes de conjugaison pour {v}")
-                    warnings.warn(f"deux formes de conjugaison pour {v}, on garde la première")
+                        warnings.warn(f"différence entre les deux formes de conjugaison pour \"{v}\"")
+                    warnings.warn(f"deux formes de conjugaison pour \"{v}\", on garde la première")
                     #NOTE que faire ? on garde la première ?
                     v_info = all_verb_infos[0]
                 else:
