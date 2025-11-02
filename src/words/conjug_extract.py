@@ -9,32 +9,7 @@ from scrap_base import *
 
 
 class ConjugExtract(object):
-    def extract_verb_info_wiki(self, v:str):
-        """
-        Scrappe la conjugaison d'un verbe sur wiktionary
-        TODO: gérer les conjugaisons pronominales, impersonnelles, ...
-        TODO: gérer les variantes (exemple: é/è)
-        TODO: pour le mode impératif, erreur: comme il y a moins de formes, les index sont décalés: 
-        TODO: seul 2s, 1p et 2p devraient être valides. or, 1s renvoie 2s, 2s renvoie 1p, etc
-        TODO: verbes composés ?
-        :param v: le verbe à scrapper
-        :return: un dictionnaire formaté pour le constructeur de Verb_info
-        """
-        # todo gérer les verbes intransitifs et ceux qui n'ont que quelques pronoms
-        # todo gérer les verbes composés ?
-        if v=="sourdre":
-            #NOTE cas particulier sourdre
-            warnings.warn("cas particulier: sourdre, on droppe tout")
-            return None
-        
-        self.current_verb = v
-        page = requests.get(f"{BASE_VERB_URL}{v}")
-        
-        soup = BeautifulSoup(page.content, "html.parser")
-        extract_verbe_group(soup)
-        
-        
-        
+    def select_types_conjugs(self, v, soup):
         types_conjug = extract_conjug_types(soup)
         
         #NOTE ci-dessous, quelques hacks pour les formes multiples
@@ -90,7 +65,6 @@ class ConjugExtract(object):
                             pass
                         else:
                             raise ExtractException(f"problème de finales pour le verbe {v}")
-                pass
 
         if len(types_conjug)==2:
             if "active" in types_conjug[0][0] and "pronominale" in types_conjug[1][0]:
@@ -119,6 +93,33 @@ class ConjugExtract(object):
                     warnings.warn(f"cas particulier: déchoir on garde la forme 1")
                 else:
                     raise ExtractException(f"problème conjugaison pour {v} forme1='{forme1}' forme2='{forme2}'")
+        return types_conjug
+
+    def extract_verb_info_wiki(self, v:str):
+        """
+        Scrappe la conjugaison d'un verbe sur wiktionary
+        TODO: gérer les conjugaisons pronominales, impersonnelles, ...
+        TODO: gérer les variantes (exemple: é/è)
+        TODO: pour le mode impératif, erreur: comme il y a moins de formes, les index sont décalés: 
+        TODO: seul 2s, 1p et 2p devraient être valides. or, 1s renvoie 2s, 2s renvoie 1p, etc
+        TODO: verbes composés ?
+        :param v: le verbe à scrapper
+        :return: un dictionnaire formaté pour le constructeur de Verb_info
+        """
+        # todo gérer les verbes intransitifs et ceux qui n'ont que quelques pronoms
+        # todo gérer les verbes composés ?
+        if v=="sourdre":
+            #NOTE cas particulier sourdre
+            warnings.warn("cas particulier: sourdre, on droppe tout")
+            return None
+        
+        self.current_verb = v
+        page = requests.get(f"{BASE_VERB_URL}{v}")
+        
+        soup = BeautifulSoup(page.content, "html.parser")
+        extract_verbe_group(soup)
+        # types_conjug =extract_conjug_types(soup)
+        types_conjug = self.select_types_conjugs(v, soup)
 
         
         # conjug_divs = soup.find_all(id=re.compile("^mb0og"))
