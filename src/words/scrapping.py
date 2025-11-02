@@ -4,7 +4,7 @@ import random
 
 from urllib.parse import unquote
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag, NavigableString
 import requests
 
 from conjug_extract import ConjugExtract
@@ -72,6 +72,15 @@ def extract_no_flextable(word,block):
     #    elif isinstance(b,NavigableString):
     #        pass 
     ldf = block.find_all("span", class_="ligne-de-forme")
+    if len(ldf)==0:
+        #a priori on doit facilement trouver là-dedans les infos
+        tags = [x for x in block.children if isinstance(x,Tag)]
+        if len(tags)==3:
+            assert tags[0].name == "summary"
+            assert tags[1].name == "p"
+            assert tags[2].name == "ol"
+            raise NotImplementedError("pas fini")
+        
     assert len(set([x.parent for x in ldf])) == 1
     tmp = [e.text.strip() for e in ldf[0].parent]
     tmp = [x for x in tmp if x not in ["",","]]
