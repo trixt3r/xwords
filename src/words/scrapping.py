@@ -1,15 +1,17 @@
 import re
 import warnings
+import random
+
+from urllib.parse import unquote
 
 from bs4 import BeautifulSoup
 import requests
+
 from conjug_extract import ConjugExtract
-
+from anagrammes import load_words_list
 from words_tuple import word_t
-
 from scrap_base import BASE_URL, ExtractException, extract_api, search_gcd
 
-from urllib.parse import unquote
 
 
 
@@ -64,6 +66,11 @@ def extract_no_flextable(word,block):
     """
     Extraction pour les cas sans flextable
     """
+    # for b in block.children:
+    #    if isinstance(b,Tag):
+    #       pass
+    #    elif isinstance(b,NavigableString):
+    #        pass 
     ldf = block.find_all("span", class_="ligne-de-forme")
     assert len(set([x.parent for x in ldf])) == 1
     tmp = [e.text.strip() for e in ldf[0].parent]
@@ -155,8 +162,10 @@ def extract_flextable_new(word,block):
                             r[2].text.strip().startswith("\\") and r[2].text.strip().endswith("\\"):
                             warnings.warn(f"probably 2 phonetics variants for {word}, taking the first one, dropping the other")
                             rows[i] = [r[0], r[1]]
+                    elif len(r)==1:
+                        rows[i] = r*2
                     else:
-                        raise ExtractException(f"cas inattendu pour {word}")
+                        raise ExtractException(f"1cas inattendu pour {word}")
             pass
         if len(_genres)==1 and len(_nombres) == 2:
             # un seul genre (peut être: masculin et féminin identiques), singulier/pluriel
@@ -165,9 +174,9 @@ def extract_flextable_new(word,block):
                 if t.startswith("\\") and t.endswith("\\"):
                     rows = [[(rows[0][0].text.strip(), rows[1][0].text.strip()),(rows[0][1].text.strip(),rows[1][0].text.strip())]]
                 else:
-                    raise ExtractException(f"cas inattendu pour {word}")
+                    raise ExtractException(f"2cas inattendu pour {word}")
             else:
-                raise ExtractException(f"cas inattendu pour {word}")
+                raise ExtractException(f"3cas inattendu pour {word}")
     elif len(rows)==1:
         # rows = [[x.text for x in rows[0].find_all("a")]]
         rows = [[tuple(y.text.strip() for y in x.find_all("a")) for x in row]for row in rows]
@@ -266,6 +275,7 @@ def parse_flex_verb(w,block):
         forme.remove(mode)
     temps = " ".join(forme)
     return (pers, nombre, mode, temps)
+
     
 def default_api_handler(block, nature:str, w:str):
     apis = block.find_all("a", href="Annexe%3APrononciation/fran%C3%A7ais")
@@ -283,11 +293,12 @@ def new_master_scrapper(w):
     
     page = requests.get(f"{BASE_URL}{w}")
     # page = requests.get("http://192.168.43.125:8181/wiktionary_fr_all_nopic_2020-10/A/%s" % w)
-    soup = BeautifulSoup(page.content.decode('utf-8'), "html.parser")
+    soup = BeautifulSoup(unquote(page.content.decode('utf-8')), "html.parser")
     regex_nature = re.compile('[1-9]')
     # results = []
     all_senses = []
     current_sense = None
+    default_etymo = ()
     for b in iter_over_level2_blocks(soup):
         if b.find("summary").text=="Français":
             for block in b.find_all("details"):
@@ -296,9 +307,27 @@ def new_master_scrapper(w):
                         #  TODO il est possible que ce bloc de niveau 3 soit en rapport avec le sens courant
                         all_senses.append(current_sense)
                         current_sense = None
-                    
+
+                    #TODO garder trace des titres qui passent
                     title = block.summary.text.strip().lower()
-                    if title in ["étymologie", "prononciation", "voir aussi", "anagrammes", "références"]:
+                    if title == "étymologie":
+                        print(title)
+                        links = block.find_all("a")
+                        if len(links)==0:
+                            continue
+                        etym = {unquote(link['href']) for link in links}
+                        if len(links)<=2:
+                            if current_sense is not None:
+                                current_sense["étymologie"] = etym
+                            else:
+                                warnings.warn(f"étymologie trouvée pour {w} sans sens courant associé")
+                                default_etymo = etym
+                        else:
+                            warnings.warn(f"{w} etym {len(links)} liens, à vérifier")
+                            continue
+                        continue
+
+                    elif title in ["prononciation", "voir aussi", "anagrammes", "références"]:
                         #  TODO 
                         continue
 
@@ -307,7 +336,8 @@ def new_master_scrapper(w):
                     if nature is None:
                         ExtractException("pas de nature trouvée")
                     
-                    nature = nature['id'][3:regex_nature.search(nature['id']).span()[0]-1]
+                    tmp_nature = nature['id'][3:regex_nature.search(nature['id']).span()[0]-1]
+                    nature = tmp_nature
                     if nature.startswith("flex-"):
                         flex = True
                         nature = nature[5:]
@@ -331,7 +361,11 @@ def new_master_scrapper(w):
                             t=block.find("table", class_="flextable")
                             # infinitif = t.find("a", href=re.compile("^Conjugaison%3Afran%C3%A7ais/")).attrs["href"][28:]
                             
-                            infinitif = t.find("a", href=re.compile("^Conjugaison:français/")).attrs["href"][21:]
+                            infinitif = t.find("a", href=re.compile("^Conjugaison:français/"))
+                            if infinitif is None:
+                                warnings.warn(f"infinitif non trouvé pour {w}")
+                                pass
+                            infinitif.attrs["href"][21:]
                             ##################################
                             forme = parse_flex_verb(w,block)
                             if len(forme) == 3:
@@ -419,6 +453,21 @@ for w in mots:
         print(f"Erreur lors de l'extraction pour {w}: {e}")
         
 print(result)
+words_list=load_words_list("data/gutenberg.txt")
+
+def test_scrapper(words:list[str], n=10):
+    test_words = random.sample(words, n)
+    results = {}
+    for w in test_words:
+        try:
+            results[w] = new_master_scrapper(w)
+        except Exception as e:
+            print(f"Erreur lors de l'extraction pour {w}: {e}")
+    print(f"{len(results)/n*100}% de réussite")
+    return results
+
+problemes = {w:new_master_scrapper(w) for w in ["poisseux", "sableuse", "outrageante"]}
+test_scrapper(words_list,200)
 # avec "rapides" c'est relou. 
 # Le block adjectif est ok: il indique "masculin et féminin identique"
 # par contre la forme de nom commun n'indique rien, il faut deviner 
