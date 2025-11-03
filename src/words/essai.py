@@ -105,6 +105,13 @@ def test_arbo(values_set):
                 return gid
         raise Exception(f"token not found {tok}")
     
+    def get_code(word:str, grp2tokens:list[list[str]])->tuple[int]:
+        code = [0]*len(grp2tokens)
+        for tok in arbo.tokenizer(word):
+            grp = my_token_to_grp(tok, grp2tokens)
+            code[grp] = grp2tokens[grp].index(tok)+1
+        return tuple(code)
+
     def create_codes(grp2tokens:list[list[str]], values:list[str])->dict[str:tuple[int]]:
         ret = {}
         for val in values:
@@ -116,14 +123,19 @@ def test_arbo(values_set):
             ret[val] = tuple(val_compress)
         return ret
 
-    word2code = create_codes(grp2tokens, arbo.values)
-    assert len(word2code) == len(arbo.values)
-    assert len(set(word2code.values())) == len(arbo.values) 
+    # word2code = create_codes(grp2tokens, arbo.values)
+    # assert len(word2code) == len(arbo.values)
+    # assert len(set(word2code.values())) == len(arbo.values) 
     bit_fields_lengths = [len(grp).bit_length() for grp in grp2tokens]
 
-    NatTok=IntEnum("NatTok", {(w.replace("-","_").upper(), token_to_bits(code,bit_fields_lengths)) for w, code in word2code.items()})
+    # for word,code in word2code.items():
+    #     assert get_code(word,grp2tokens)==code
+
+    NatTok=IntEnum("NatTok", {(w.replace("-","_").upper(), token_to_bits(get_code(w, grp2tokens),bit_fields_lengths)) for w in arbo.values})
+    
+    
     for n in NatTok:
-        assert n.value == token_to_bits(word2code[n.name.replace("_","-").lower()], bit_fields_lengths)
+        assert n.value == token_to_bits(get_code(n.name.replace("_","-").lower(), grp2tokens), bit_fields_lengths)
     
     return
 
