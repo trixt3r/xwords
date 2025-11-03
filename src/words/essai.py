@@ -105,52 +105,25 @@ def test_arbo(values_set):
                 return gid
         raise Exception(f"token not found {tok}")
     
-    def create_codes(grp2tokens:list[list[str]], token2group:list[int], values:list[str])->dict[str:tuple[int]]:
+    def create_codes(grp2tokens:list[list[str]], values:list[str])->dict[str:tuple[int]]:
         ret = {}
         for val in values:
             val_compress:list[int] = [0]*len(grp2tokens)
             tokens = arbo.tokenizer(val)
             for tok in tokens:
-                grp = token2group[tok]
+                grp = my_token_to_grp(tok, grp2tokens)
                 val_compress[grp] = grp2tokens[grp].index(tok)+1
             ret[val] = tuple(val_compress)
         return ret
-    #NOTE la suite est bonne à jeter haha
 
-    def testo3_suite(word2code:dict[str, tuple[int]]):
-        # calc = [set()]*len(results[results.keys()[0]])
-        calc:list[set] = [set() for _ in range(len(word2code[list(word2code.keys())[0]]))]
-        for v,code in word2code.items():
-            for i,c in enumerate(code):
-                calc[i].add(c)
-
-        # for each token position, the count of distinct possible tokens
-        #NOTE pourquoi -1?
-        tokens_count = [len(c)-1 for c in calc]
-        bit_fields_lengths = [c.bit_length() for c in [len(c)-1 for c in calc]]
-        #NOTE minus one for the zero value
-        remaining_codes = [2**b_f_l - tc - 1 for tc,b_f_l in zip(tokens_count, bit_fields_lengths)]
-        return bit_fields_lengths
-
-    # result = repartis_tokens3(grp2tokens)
-    word2code = create_codes(grp2tokens, token2group, arbo.values)
+    word2code = create_codes(grp2tokens, arbo.values)
     assert len(word2code) == len(arbo.values)
-    assert len(set(word2code.values())) == len(arbo.values)
-    bit_field_lengths2 = [len(grp).bit_length() for grp in grp2tokens]
-    bit_fields_lengths = testo3_suite(word2code)
-    assert bit_field_lengths2 == bit_fields_lengths
+    assert len(set(word2code.values())) == len(arbo.values) 
+    bit_fields_lengths = [len(grp).bit_length() for grp in grp2tokens]
 
     NatTok=IntEnum("NatTok", {(w.replace("-","_").upper(), token_to_bits(code,bit_fields_lengths)) for w, code in word2code.items()})
-    
-    tzs = token_to_bits(word2code['var-typo'], bit_fields_lengths)
-    ret = bits_to_token(tzs, bit_fields_lengths)
-    ##########################################################################################################
-    #TOUT EST Là !
-    #################
-    for nat in arbo.values:
-        print(f"{nat} : {word2code[nat]}  -> {token_to_bits(word2code[nat], bit_fields_lengths)} -> {bits_to_token(token_to_bits(word2code[nat], bit_fields_lengths), bit_fields_lengths)}")
-        assert bits_to_token(token_to_bits(word2code[nat], bit_fields_lengths), bit_fields_lengths) == word2code[nat]
-    ##########################################################################################################
+    for n in NatTok:
+        assert n.value == token_to_bits(word2code[n.name.replace("_","-").lower()], bit_fields_lengths)
     
     return
 
