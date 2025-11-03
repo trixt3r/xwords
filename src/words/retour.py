@@ -432,19 +432,6 @@ class ArboComp(object):
         groups = list(set(v[GROUP] for k, v in counters.items()))
         groups.sort()
         grp2tokens = [[k for k, v in counters.items() if v[GROUP] == e] for e in groups]
-        # Group tokens by their state pattern
-        # grp2tokens = {e: [k for k, v in counters.items() if v[GROUP] == e] for e in groups}
-
-        # # # MAP token_state (1,2,3,6) TO token count for this state
-        # # token_count_by_état = {counters[k][-1]:len([t for t in counters if counters[t][-1]==counters[k][-1]]) for k in counters}
-        
-        # # return counters, token_by_état,initiaux,finaux, counters_new
-        
-        # indices = list(grp2tokens.keys())
-        # indices.sort()
-        # new_grp2tokens = [grp2tokens[i] for i in indices]
-        # grp2tokens = new_grp2tokens
-
         
         token2group = {t:gid for gid in range(len(grp2tokens)) for t in grp2tokens[gid]}
 
