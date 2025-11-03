@@ -353,6 +353,9 @@ class ArboComp(object):
                 self.start_counter+=1
             if at_end:
                 self.end_counter+=1
+        
+        def __repr__(self):
+            return f"ArboState(token={self.token}, bitmask={self.bitmask}, start_count={self.start_counter}, end_count={self.end_counter}, positions={self.position_counters})"
 
     def analyze_new(self):
         """
@@ -395,15 +398,15 @@ class ArboComp(object):
         # Define special indices in the counter arrays
         INIT = self.values_max_token_count      # Index for start-of-value count
         FIN = self.values_max_token_count + 1   # Index for end-of-value count  
-        STATE = self.values_max_token_count + 2 # Index for position bitmask
+        GROUP = self.values_max_token_count + 2 # Index for position bitmask
         
         # Analyze each value and update token statistics
         for v in self.values:
             tokens = self.tokenizer(v)
             for i, token in enumerate(tokens):
                 # Count occurrence at this position
-                counters[token][i] += 1
                 counters_new[token].inc_counters(pos=i, at_start=(i==0), at_end=(i==len(tokens)-1))
+                counters[token][i] += 1
                 # Track if this token appears at the end of this value
                 if i == len(tokens) - 1:
                     counters[token][FIN] += 1
@@ -413,27 +416,67 @@ class ArboComp(object):
                     counters[token][INIT] += 1
                     
                 # Update the state bitmask to include this position
-                counters[token][STATE] = counters[token][STATE] | pow(2, i)
+                counters[token][GROUP] = counters[token][GROUP] | pow(2, i)
         
         # Compute derived statistics
         for k, v in counters.items():
             pass
             
-        # Find tokens that appear ONLY at the end (fin_count equals total_count)
-        finaux = list({k for k, v in counters.items() if v[FIN] == sum(v[:self.values_max_token_count])})
+        # # Find tokens that appear ONLY at the end (fin_count equals total_count)
+        # finaux = list({k for k, v in counters.items() if v[FIN] == sum(v[:self.values_max_token_count])})
 
-        # Find tokens that appear ONLY at the start (init_count equals total_count)
-        initiaux = list({k for k, v in counters.items() if v[INIT] == sum(v[:self.values_max_token_count])})
+        # # Find tokens that appear ONLY at the start (init_count equals total_count)
+        # initiaux = list({k for k, v in counters.items() if v[INIT] == sum(v[:self.values_max_token_count])})
 
         # Collect all unique state patterns (position bitmasks)
-        états = set(v[STATE] for k, v in counters.items())
-        
+        groups = list(set(v[GROUP] for k, v in counters.items()))
+        groups.sort()
+        grp2tokens = [[k for k, v in counters.items() if v[GROUP] == e] for e in groups]
         # Group tokens by their state pattern
-        token_by_état = {e: [k for k, v in counters.items() if v[STATE] == e] for e in états}
+        # grp2tokens = {e: [k for k, v in counters.items() if v[GROUP] == e] for e in groups}
 
-        # MAP token_state (1,2,3,6) TO token count for this state
-        token_count_by_état = {counters[k][-1]:len([t for t in counters if counters[t][-1]==counters[k][-1]]) for k in counters}
-        return counters, token_by_état,initiaux,finaux, counters_new
+        # # # MAP token_state (1,2,3,6) TO token count for this state
+        # # token_count_by_état = {counters[k][-1]:len([t for t in counters if counters[t][-1]==counters[k][-1]]) for k in counters}
+        
+        # # return counters, token_by_état,initiaux,finaux, counters_new
+        
+        # indices = list(grp2tokens.keys())
+        # indices.sort()
+        # new_grp2tokens = [grp2tokens[i] for i in indices]
+        # grp2tokens = new_grp2tokens
+
+        
+        token2group = {t:gid for gid in range(len(grp2tokens)) for t in grp2tokens[gid]}
+
+        value2groups = ((v,[token2group[t] for t in self.tokenizer(v)]) for v in self.values)
+        collisions = {value:states for value,states in value2groups if not len(set(states))==len(states)}
+
+        # plusieurs tokens à la meme position, impossible. Repartitionner
+        while not len(collisions) == 0:
+            value, grps = collisions.popitem()
+            fault_grps = set([g for g in grps if grps.count(g)>1])
+            if len(fault_grps)==1:
+                #il faut isoler les tokens de value, donc len(tokens(value))-1 nouveaux groupes
+                #NOTE on en garde un dans le groupe d'origine, ici le premier qui vient
+                for i,tok in enumerate(self.tokenizer(value)):
+                    if i==0:
+                        continue
+                    # new_groups.append([tok])
+                    if token2group[tok] in fault_grps:
+                        #créer un nouveau groupe
+                        new_group_id = len(grp2tokens)
+                        grp2tokens.append([tok])
+                        grp2tokens[token2group[tok]].remove(tok)
+                        token2group[tok] = new_group_id
+
+            token2group = {t:gid for gid in range(len(grp2tokens)) for t in grp2tokens[gid]}
+            value2groups = ((v,[token2group[t] for t in self.tokenizer(v)]) for v in self.values)
+            collisions = {value:states for value,states in value2groups if not len(set(states))==len(states)}
+            pass
+        assert len(collisions) == 0
+        
+        return grp2tokens, token2group
+        
 
 
 # from pprint import pprint
@@ -472,39 +515,39 @@ def flagiz(values: list[int]) -> int:
         offset+=l
     return ret
 
-#NOTE fausse route
-def testo():
-    ret = {}
-    for nature in arbo.values:
-        h = nature.split('-')
-        current = []
-        for t in h:
-            for i,state in enumerate(token_by_état):
-                if t in token_by_état[state]:
-                    current.append(token_by_état[state].index(t))
-                    break
-            ret[nature] = current
-    return ret
+# #NOTE fausse route
+# def testo():
+#     ret = {}
+#     for nature in arbo.values:
+#         h = nature.split('-')
+#         current = []
+#         for t in h:
+#             for i,state in enumerate(token_by_état):
+#                 if t in token_by_état[state]:
+#                     current.append(token_by_état[state].index(t))
+#                     break
+#             ret[nature] = current
+#     return ret
 
-#NOTE fausse route
-def testo2(token_by_état, ordre):
-    ret = {}
-    for nature in arbo.values:
-        h = nature.split('-')
-        current = []
-        i = 0
-        while i < len(h):
-            for j,o in enumerate(ordre):
-                state = token_by_état[o]
-                if h[i] in state:
-                    current.append(state.index(h[i]))
-                    i+=1
-                    break
-                else:
-                    if j>i<len(h):
-                        current.append(-1)
-            ret[nature] = current
-    return ret
+# #NOTE fausse route
+# def testo2(token_by_état, ordre):
+#     ret = {}
+#     for nature in arbo.values:
+#         h = nature.split('-')
+#         current = []
+#         i = 0
+#         while i < len(h):
+#             for j,o in enumerate(ordre):
+#                 state = token_by_état[o]
+#                 if h[i] in state:
+#                     current.append(state.index(h[i]))
+#                     i+=1
+#                     break
+#                 else:
+#                     if j>i<len(h):
+#                         current.append(-1)
+#             ret[nature] = current
+#     return ret
 
 
 

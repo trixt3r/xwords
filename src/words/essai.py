@@ -29,11 +29,139 @@ def bits_to_token(bits, bit_fields_lengths):
         mask = (1 << b_f_l) - 1
         code = (bits >> shift) & mask
         token_code.append(code)
-    return token_code
-
-
+    return tuple(token_code)
 
 def test_arbo(values_set):
+    arbo = ArboComp()
+    for n in values_set:
+        arbo.add_tokens(n)
+
+    for n in arbo.values:
+        print(n , arbo.comp_tokens(n))
+
+    pprint(arbo.tokens)
+
+    
+    grp2tokens,token2group = arbo.analyze_new()
+    # counters_old, grp2tokens,initiaux,finaux, counters_new = arbo.analyze_new()
+    # assert(set(counters_old.keys())==set(counters_new.keys()))
+    # for k in counters_old.keys():
+    #     cnt_new = counters_new[k]
+    #     cnt_old = counters_old[k]
+    #     assert cnt_new.bitmask == cnt_old[-1]
+    #     assert cnt_new.start_counter == cnt_old[-3]
+    #     assert cnt_new.end_counter == cnt_old[-2]
+    # # MAP token_state (1,2,3,6) TO token count for this state
+
+    # token_count_by_état = {counters_new[k].bitmask:len([t for t in counters_new if counters_new[t].bitmask==counters_new[k].bitmask]) for k in counters_new}
+    
+    # indices = list(grp2tokens.keys())
+    # indices.sort()
+    # new_grp2tokens = [grp2tokens[i] for i in indices]
+    # grp2tokens = new_grp2tokens
+
+    
+    # token2group = {t:gid for gid in range(len(grp2tokens)) for t in grp2tokens[gid]}
+
+    # value2groups = ((v,[token2group[t] for t in arbo.tokenizer(v)]) for v in arbo.values)
+    # collisions = {value:states for value,states in value2groups if not len(set(states))==len(states)}
+
+    # # plusieurs tokens à la meme position, impossible. Repartitionner
+    # while not len(collisions) == 0:
+    #     value, grps = collisions.popitem()
+    #     fault_grps = set([g for g in grps if grps.count(g)>1])
+    #     if len(fault_grps)==1:
+    #         #il faut isoler les tokens de value, donc len(tokens(value))-1 nouveaux groupes
+    #         #NOTE on en garde un dans le groupe d'origine, ici le premier qui vient
+    #         for i,tok in enumerate(arbo.tokenizer(value)):
+    #             if i==0:
+    #                 continue
+    #             # new_groups.append([tok])
+    #             if token2group[tok] in fault_grps:
+    #                 #créer un nouveau groupe
+    #                 new_group_id = len(grp2tokens)
+    #                 grp2tokens.append([tok])
+    #                 grp2tokens[token2group[tok]].remove(tok)
+    #                 token2group[tok] = new_group_id
+
+    #     token2group = {t:gid for gid in range(len(grp2tokens)) for t in grp2tokens[gid]}
+    #     value2groups = ((v,[token2group[t] for t in arbo.tokenizer(v)]) for v in arbo.values)
+    #     collisions = {value:states for value,states in value2groups if not len(set(states))==len(states)}
+    #     pass
+    # if len(collisions) == 0:
+    #     print("woohoo!")
+
+    for i,grp in enumerate(grp2tokens):
+        print(f"grp {i} :  {len(grp2tokens[i])} tokens {(len(grp2tokens[i])+1).bit_length()} bits")
+        print(f"{grp2tokens[i]}")
+        pass
+
+    
+    def my_token_to_grp(tok:str,grp2tokens)->int:
+        for gid, tokens in enumerate(grp2tokens):
+            if tok in tokens:
+                return gid
+        raise Exception(f"token not found {tok}")
+    
+    def create_codes(grp2tokens:list[list[str]], token2group:list[int], values:list[str])->dict[str:tuple[int]]:
+        ret = {}
+        for val in values:
+            val_compress:list[int] = [0]*len(grp2tokens)
+            tokens = arbo.tokenizer(val)
+            for tok in tokens:
+                grp = token2group[tok]
+                val_compress[grp] = grp2tokens[grp].index(tok)+1
+            ret[val] = tuple(val_compress)
+        return ret
+    #NOTE la suite est bonne à jeter haha
+
+    def testo3_suite(results):
+        # calc = [set()]*len(results[results.keys()[0]])
+        calc = [set() for _ in range(len(results[list(results.keys())[0]]))]
+        for v,code in results.items():
+            for i,c in enumerate(code):
+                calc[i].add(c)
+        
+        # for each token position, the count of distinct possible tokens
+        #NOTE pourquoi -1?
+        tokens_count = [len(c)-1 for c in calc]
+        bit_fields_lengths = [c.bit_length() for c in tokens_count]
+        #NOTE minus one for the zero value
+        remaining_codes = [2**b_f_l - tc - 1 for tc,b_f_l in zip(tokens_count, bit_fields_lengths)]
+        return tokens_count, bit_fields_lengths, remaining_codes
+
+    # result = repartis_tokens3(grp2tokens)
+    result = create_codes(grp2tokens, token2group, arbo.values)
+    assert len(result) == len(arbo.values)
+    assert len(set(result.values())) == len(arbo.values)
+
+    tokens_count, bit_fields_lengths, remaining_codes = testo3_suite(result)
+    
+    tzs = token_to_bits(result['var-typo'], bit_fields_lengths)
+    ret = bits_to_token(tzs, bit_fields_lengths)
+    ##########################################################################################################
+    #TOUT EST Là !
+    #################
+    for nat in values_set:
+        print(f"{nat} : {result[nat]}  -> {token_to_bits(result[nat], bit_fields_lengths)} -> {bits_to_token(token_to_bits(result[nat], bit_fields_lengths), bit_fields_lengths)}")
+        assert bits_to_token(token_to_bits(result[nat], bit_fields_lengths), bit_fields_lengths) == result[nat]
+    ##########################################################################################################
+    
+    codés={token_to_bits(result[nat], bit_fields_lengths):nat for nat in values_set}
+    print(f"coded token max length : {max(codés.keys()).bit_length()}")
+    pprint(tokens_count)
+    pprint(bit_fields_lengths)
+    pprint(remaining_codes)
+    ##########################################################################################################
+    #TOUT EST Là !
+    #################
+    for nat in values_set:
+        print(f"{nat} : {result[nat]}  -> {token_to_bits(result[nat], bit_fields_lengths)} -> {bits_to_token(token_to_bits(result[nat], bit_fields_lengths), bit_fields_lengths)}")
+        assert bits_to_token(token_to_bits(result[nat], bit_fields_lengths), bit_fields_lengths) == result[nat]
+
+    return
+
+def test_arbo_first(values_set):
     arbo = ArboComp()
     for n in values_set:
         arbo.add_tokens(n)
@@ -61,13 +189,11 @@ def test_arbo(values_set):
     
     # 
     token2group = {t:g for g in grp2tokens for t in grp2tokens[g]}
-    value2groups = ((v,[token2group[t] for t in arbo.tokenizer(v)]) for v in arbo.values)
     
-    # plusieurs tokens à la meme position, impossible. Repartitionner
+    value2groups = ((v,[token2group[t] for t in arbo.tokenizer(v)]) for v in arbo.values)
     collisions = {value:states for value,states in value2groups if not len(set(states))==len(states)}
-    #Note on numérotera les groupes plus tard
-    #note le temps qu ej'ecrive ça c'etait codé déja
-    new_groups = []
+
+    # plusieurs tokens à la meme position, impossible. Repartitionner
     while not len(collisions) == 0:
         value, grps = collisions.popitem()
         fault_grps = set([g for g in grps if grps.count(g)>1])
@@ -85,14 +211,29 @@ def test_arbo(values_set):
                     grp2tokens[token2group[tok]].remove(tok)
                     grp2tokens[new_group_id].append(tok)
                     token2group[tok] = new_group_id
-            pass
+
+        token2group = {t:g for g in grp2tokens for t in grp2tokens[g]}
+        value2groups = ((v,[token2group[t] for t in arbo.tokenizer(v)]) for v in arbo.values)
+        collisions = {value:states for value,states in value2groups if not len(set(states))==len(states)}
         pass
     if len(collisions) == 0:
         print("woohoo!")
 
     for grp in grp2tokens:
+        print(f"grp {grp} : {len(grp2tokens[grp])} tokens {(len(grp2tokens[grp])+1).bit_length()} bits")
+        print(f"{grp2tokens[grp]}")
         pass
 
+    for val in arbo.values:
+        val_compress:list[int] = [0]*len(grp2tokens)
+        tokens = arbo.tokenizer(val)
+        for tok in tokens:
+            grp = token2group[tok]
+            #TODO il faudrait que grp2tokens soit un simple tableau indexable
+            # val_compress[grp-1] = grp2tokens[grp].index(tok)+1
+    
+
+    #NOTE la suite est bonne à jeter haha
 
     #NOTE ça vient surement de par là
     #NOTE voir aussi bits_to_token et token_to_bits 
