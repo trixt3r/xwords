@@ -136,7 +136,7 @@ def test_arbo(values_set):
     word2code = create_codes(grp2tokens, token2group, arbo.values)
     assert len(word2code) == len(arbo.values)
     assert len(set(word2code.values())) == len(arbo.values)
-    bit_field_lengths2 = [len(grp).bit_count() for grp in grp2tokens]
+    bit_field_lengths2 = [len(grp).bit_length() for grp in grp2tokens]
     bit_fields_lengths = testo3_suite(word2code)
     assert bit_field_lengths2 == bit_fields_lengths
 
