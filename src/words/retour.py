@@ -462,7 +462,7 @@ class ArboComp(object):
             pass
         assert len(collisions) == 0
         
-        return grp2tokens, token2group
+        return grp2tokens
         
 
 

@@ -3,17 +3,25 @@ import code
 from enum import IntEnum
 from retour import *
 from pprint import pprint
-natures = {'pronom-rel', 'flex-verb', 'nom', 'flex-art-déf', 'var-typo', 'adj-dém', 'part', 'flex-art-indéf', 'flex-adj-pos', 'adj-indéf', 'prénom', 'nom-pr', 'pronom-pers', 'adj', 'adv', 'verb', 'art-part', 'flex-adj', 'flex-adj-indéf', 'onoma', 'adj-int', 'conj-coord', 'flex-adj-dém', 'adv-int', 'flex-nom', 'interj', 'symb', 'flex-pronom-dém', 'adv-rel', 'suf', 'pronom-dém', 'flex-pronom-rel', 'flex-pronom-pers', 'phr', 'flex-prép', 'lettre', 'adj-num', 'pronom-int', 'prép', 'flex-pronom-int', 'adj-rel', 'adj-pos', 'flex-adv', 'pronom', 'nom-fam', 'pronom-indéf', 'flex-pronom-indéf', 'art-indéf', 'flex-adj-int', 'art-déf', 'conj'}
 # natures_2 = collect_attribute_values(root, 'nature')
 # assert set(natures) == set(natures_2)
 
 ####################################################
 ####################################################
 #ça me saoule, je suis une merde en tout
+# mais non, faut pas dire ça
 ####################################################
 ####################################################
 
+def bitmask(length,offset):
+    return ((1 << length) - 1) << offset
 
+def bitmask_for_group(grps2tokens,gid):
+    return bitmask(len(grps2tokens[gid]).bit_length(), sum(len(grps2tokens[g]).bit_length() for g in range(gid)))
+    bit_fields_lengths = [len(grp).bit_length() for grp in grps2tokens]
+    total_bits = sum(bit_fields_lengths)
+    mask = (1 << total_bits) - 1
+    return mask
 
 def token_to_bits(token_code, bit_fields_lengths):
     bits = 0
@@ -44,55 +52,8 @@ def test_arbo(values_set):
     pprint(arbo.tokens)
 
     
-    grp2tokens,token2group = arbo.analyze_new()
-    # counters_old, grp2tokens,initiaux,finaux, counters_new = arbo.analyze_new()
-    # assert(set(counters_old.keys())==set(counters_new.keys()))
-    # for k in counters_old.keys():
-    #     cnt_new = counters_new[k]
-    #     cnt_old = counters_old[k]
-    #     assert cnt_new.bitmask == cnt_old[-1]
-    #     assert cnt_new.start_counter == cnt_old[-3]
-    #     assert cnt_new.end_counter == cnt_old[-2]
-    # # MAP token_state (1,2,3,6) TO token count for this state
-
-    # token_count_by_état = {counters_new[k].bitmask:len([t for t in counters_new if counters_new[t].bitmask==counters_new[k].bitmask]) for k in counters_new}
+    grp2tokens= arbo.analyze_new()
     
-    # indices = list(grp2tokens.keys())
-    # indices.sort()
-    # new_grp2tokens = [grp2tokens[i] for i in indices]
-    # grp2tokens = new_grp2tokens
-
-    
-    # token2group = {t:gid for gid in range(len(grp2tokens)) for t in grp2tokens[gid]}
-
-    # value2groups = ((v,[token2group[t] for t in arbo.tokenizer(v)]) for v in arbo.values)
-    # collisions = {value:states for value,states in value2groups if not len(set(states))==len(states)}
-
-    # # plusieurs tokens à la meme position, impossible. Repartitionner
-    # while not len(collisions) == 0:
-    #     value, grps = collisions.popitem()
-    #     fault_grps = set([g for g in grps if grps.count(g)>1])
-    #     if len(fault_grps)==1:
-    #         #il faut isoler les tokens de value, donc len(tokens(value))-1 nouveaux groupes
-    #         #NOTE on en garde un dans le groupe d'origine, ici le premier qui vient
-    #         for i,tok in enumerate(arbo.tokenizer(value)):
-    #             if i==0:
-    #                 continue
-    #             # new_groups.append([tok])
-    #             if token2group[tok] in fault_grps:
-    #                 #créer un nouveau groupe
-    #                 new_group_id = len(grp2tokens)
-    #                 grp2tokens.append([tok])
-    #                 grp2tokens[token2group[tok]].remove(tok)
-    #                 token2group[tok] = new_group_id
-
-    #     token2group = {t:gid for gid in range(len(grp2tokens)) for t in grp2tokens[gid]}
-    #     value2groups = ((v,[token2group[t] for t in arbo.tokenizer(v)]) for v in arbo.values)
-    #     collisions = {value:states for value,states in value2groups if not len(set(states))==len(states)}
-    #     pass
-    # if len(collisions) == 0:
-    #     print("woohoo!")
-
     for i,grp in enumerate(grp2tokens):
         print(f"grp {i} :  {len(grp2tokens[i])} tokens {(len(grp2tokens[i])+1).bit_length()} bits")
         print(f"{grp2tokens[i]}")
@@ -112,34 +73,27 @@ def test_arbo(values_set):
             code[grp] = grp2tokens[grp].index(tok)+1
         return tuple(code)
 
-    def create_codes(grp2tokens:list[list[str]], values:list[str])->dict[str:tuple[int]]:
-        ret = {}
-        for val in values:
-            val_compress:list[int] = [0]*len(grp2tokens)
-            tokens = arbo.tokenizer(val)
-            for tok in tokens:
-                grp = my_token_to_grp(tok, grp2tokens)
-                val_compress[grp] = grp2tokens[grp].index(tok)+1
-            ret[val] = tuple(val_compress)
-        return ret
-
-    # word2code = create_codes(grp2tokens, arbo.values)
-    # assert len(word2code) == len(arbo.values)
-    # assert len(set(word2code.values())) == len(arbo.values) 
     bit_fields_lengths = [len(grp).bit_length() for grp in grp2tokens]
 
-    # for word,code in word2code.items():
-    #     assert get_code(word,grp2tokens)==code
+
 
     NatTok=IntEnum("NatTok", {(w.replace("-","_").upper(), token_to_bits(get_code(w, grp2tokens),bit_fields_lengths)) for w in arbo.values})
-    
+    def is_adj(nature:NatTok)->bool:
+        return nature.value & NatTok.ADJ.value == NatTok.ADJ.value
     
     for n in NatTok:
         assert n.value == token_to_bits(get_code(n.name.replace("_","-").lower(), grp2tokens), bit_fields_lengths)
-    
-    return
+        print(f"nature {n} code {get_code(n.name.replace('_','-').lower(), grp2tokens)} bin {bin(n.value)} bits {n.value:0{sum(bit_fields_lengths)}b}")
+        if "ADJ" in n.name:
 
-test_arbo(natures)
+            assert is_adj(n), f"nature {n} {n.name} incorrectly identified as NOT adj {NatTok.ADJ.value}"
+        else:
+            assert not is_adj(n), f"nature {n} {n.name} incorrectly identified as adj {NatTok.ADJ.value}"
+    return NatTok
+
+natures = {'pronom-rel', 'flex-verb', 'nom', 'flex-art-déf', 'var-typo', 'adj-dém', 'part', 'flex-art-indéf', 'flex-adj-pos', 'adj-indéf', 'prénom', 'nom-pr', 'pronom-pers', 'adj', 'adv', 'verb', 'art-part', 'flex-adj', 'flex-adj-indéf', 'onoma', 'adj-int', 'conj-coord', 'flex-adj-dém', 'adv-int', 'flex-nom', 'interj', 'symb', 'flex-pronom-dém', 'adv-rel', 'suf', 'pronom-dém', 'flex-pronom-rel', 'flex-pronom-pers', 'phr', 'flex-prép', 'lettre', 'adj-num', 'pronom-int', 'prép', 'flex-pronom-int', 'adj-rel', 'adj-pos', 'flex-adv', 'pronom', 'nom-fam', 'pronom-indéf', 'flex-pronom-indéf', 'art-indéf', 'flex-adj-int', 'art-déf', 'conj'}
+
+NatTok = test_arbo(natures)
 
 
 
