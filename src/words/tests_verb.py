@@ -21,8 +21,8 @@ def test_compressed_verb(v_list:list[str]):
         # TODO: vérifier aussi getMode, infinitif, participes...
         a_tester = ["Indicatif:Présent:1p","Subjonctif:Imparfait:2s", "Impératif:Présent", "Indicatif:Passé-composé:3p"]
         for t in a_tester:
-            r_nc = v_nc.getMode(t)
-            r_c = v_compressed.getMode(t)
+            r_nc = v_nc.getMode_str(t)
+            r_c = v_compressed.getMode_str(t)
             assert(r_nc==r_c) 
 
     return 

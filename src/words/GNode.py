@@ -124,8 +124,8 @@ class GenericNode(object):
                 # print("####################1")
                 # need to split
                 i = 0
-                for i in range(0,min(len(k), len(reste))):
-                    if k[i]!=reste[i]:
+                for i in range(0, min(len(k), len(reste))):
+                    if k[i] != reste[i]:
                         break
                     i += 1
                 # print("common length: %d" % i)
@@ -144,16 +144,16 @@ class GenericNode(object):
                     inter_node._setChild(nk[len(inter_node.path):], new_node)  #  insert new node
                     return new_node
             else:   
-                # print("####################2")
-                # on tombe ici quand arbre vide, ou bien suffixe à ajouter
-                # sur le noeud trouvé
+                # on tombe ici quand arbre vide, ou feuille à ajouter
                 new_node = self.__class__(nk, data)  #  create new node
                 parent_node._setChild(nk[len(parent_node.path):], new_node)
                 return new_node
         else:
-            # print("####################3")
+            # le noeud existe deja, on ajoutera les données
             target_node = parent_node
 
+        assert target_node is not None, "erreur, target_node est None"
+        
         if target_node.data is None:
             target_node.__class__.data_init()
         if self.__class__.data_init == list:
@@ -172,14 +172,14 @@ class GenericNode(object):
         fifo = [(self, canonic)]  # (node, path remainder)
         while len(fifo) > 0:
             s = fifo.pop()
-            cn = s[0]  # curent node
-            cw = s[1]  # path remainder to explore this branch
+            current_node = s[0]  # curent node
+            remaining = s[1]  # path remainder to explore this branch
             # print("sAnag: start loop %s %s" % (str(cn), cw))
-            for c in cn.children:
+            for c in current_node.children:
                 # this child node can be reached
-                if cwapi.can_write(cw, c):
-                    child_node = cn.child(c)
-                    remainder = cwapi.difference(c, cw)
+                if cwapi.can_write(remaining, c):
+                    child_node = current_node.child(c)
+                    remainder = cwapi.difference(c, remaining)
                     # add node to resut list only if it contains data
                     if child_node.hasData:
                         ret.append(child_node)
@@ -216,7 +216,7 @@ class GenericNode(object):
         return n
 
 class GenericListNode(GenericNode):
-    data_init = list
+    data_init = list 
     def __eq__(self, other):
         if not isinstance(other, GenericListNode):
             return False
@@ -241,6 +241,16 @@ class GenericListNode(GenericNode):
             if not node == other.children[path]: 
                 return False
         return True
+
+class WTupleNode(GenericListNode):
+    @classmethod
+    def node_key(cls, n):
+        return n
+
+    @classmethod
+    def data_key(cls, n):
+        return n["mot"]
+
 
 class NewGrammNode(GenericNode):
     @classmethod

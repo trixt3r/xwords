@@ -4,7 +4,7 @@ from enum import Enum
 from sortedlist import SortedList
 from words_tuple import word_info_t
 from cw import getCanonicForm, phon_getCanonicForm
-from errors import Error, ImplementError
+
 
 
 class WSortedList(SortedList):

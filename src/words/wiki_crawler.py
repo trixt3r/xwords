@@ -843,8 +843,8 @@ def q_load_verb(v):
 def my_test():
     acc = q_load_verb("accompagner")
     aller = q_load_verb("aller")
-    assert acc.getMode("Indicatif:Présent:2s").ort == "accompagnes", acc.getMode("Indicatif:Présent:2s")
-    assert aller.getMode("Indicatif:Imparfait:2p").ort == "alliez"
+    assert acc.getMode_str("Indicatif:Présent:2s").ort == "accompagnes", acc.getMode_str("Indicatif:Présent:2s")
+    assert aller.getMode_str("Indicatif:Imparfait:2p").ort == "alliez"
 
 gamin=extract_infos("gamin")
 manger=extract_verb_info_wiki("manger")

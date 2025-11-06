@@ -40,7 +40,7 @@ def extract_ol_semantic(ol):
     return set(semantics)
 
 
-def parse_flextable(flex_t):
+def parse_flextable(flex_t)->tuple[dict[str,tuple[str,str]], bool]:
     rows = flex_t.tbody.find_all("tr")
     mf:bool = False  #  True if masculin et féminin identique
     invariable = False
@@ -121,7 +121,7 @@ def parse_flextable(flex_t):
             # api = rows[2].a.span.text[1:-1].replace(".)",").").replace("ɡ","g")
             api = extract_api(rows[2].a.span.text)
             word = rows[1].td.a.text[1:-1]
-            return {"I":(word, api)}
+            return ({"I":(word, api)}, mf)
 
         if rows[1].th is not None:
             if rows[1].th.text.replace(" ","").lower()=="masculinetféminin":
@@ -139,7 +139,7 @@ def parse_flextable(flex_t):
                 "p":(pluriel,api)
             }, mf)
 
-    return None
+    raise ExtractException("problème de flextable")
 
 def extract_available_languages(soup):
     languages = []
@@ -1439,8 +1439,8 @@ def q_load_verb(v):
 def my_test():
     acc = q_load_verb("accompagner")
     aller = q_load_verb("aller")
-    assert acc.getMode("Indicatif:Présent:2s").ort == "accompagnes", acc.getMode("Indicatif:Présent:2s")
-    assert aller.getMode("Indicatif:Imparfait:2p").ort == "alliez"
+    assert acc.getMode_str("Indicatif:Présent:2s").ort == "accompagnes", acc.getMode_str("Indicatif:Présent:2s")
+    assert aller.getMode_str("Indicatif:Imparfait:2p").ort == "alliez"
 
 # my_test()
 

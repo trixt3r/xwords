@@ -1,17 +1,19 @@
 import re
+from typing import Generator
 import warnings
 import random
 
 from urllib.parse import unquote
 
-from bs4 import BeautifulSoup, Tag, NavigableString
+from bs4 import BeautifulSoup, element, Tag
 import requests
 
 from conjug_extract import ConjugExtract
 from anagrammes import load_words_list
+from GNode import *
 from words_tuple import word_t
 from scrap_base import BASE_URL, ExtractException, extract_api, search_gcd
-
+from verb import Verb_info
 
 
 
@@ -26,17 +28,19 @@ def extract_ol_semantic(ol):
         semantics.append(s)
     return set(semantics)
 
-def iter_over_level2_blocks(soup):
+def iter_over_level2_blocks(soup)->Generator[element.Tag, None, None]:
     for l in soup.find_all("details", attrs={"data-level":2}):
         yield l
 
-def iter_over_level3_blocks(soup):
+def iter_over_level3_blocks(soup)->Generator[element.Tag, None, None]:
     for l in soup.find_all("details", attrs={"data-level":3}):
         yield l
 
 def _get_key_desinence(genre, nombre):
     trad_genre = {"masculin":"m", "féminin":"f", "neutre":"n", "masculinetféminin":"mf", "invariable":"i"}
-    trad_nombre = {"singulier":"s", "pluriel":"p", "invariable":"i"}
+    #NOTE j'aime pas cette affaire de invariable/indénombrable
+    #NOTE je pense que ça devrait le faire
+    trad_nombre = {"singulier":"s", "pluriel":"p", "invariable":"i", "indénombrable":"i"}
     g = trad_genre[genre]
     n = trad_nombre[nombre]
     return f"{g}{n}"
@@ -76,12 +80,25 @@ def extract_no_flextable(word,block):
         #a priori on doit facilement trouver là-dedans les infos
         tags = [x for x in block.children if isinstance(x,Tag)]
         if len(tags)==3:
+            genre, nombre, api = None, None, None
             assert tags[0].name == "summary"
             assert tags[1].name == "p"
             assert tags[2].name == "ol"
+            g_n = tags[2].text.strip().lower().split(" ")
+            assert len(g_n)>=2
+            assert g_n[0] in ["masculin","féminin"]
+            assert g_n[1] in ["singulier","pluriel"]
+            assert g_n[2] == "de"
+            genre = g_n[0]
+            nombre = g_n[1]
+            _api = tags[1].text.strip().split(" ")
+            assert len(_api)==2
+            assert _api[1].startswith("\\") and _api[1].endswith("\\")
+            api = extract_api(_api[1])
+            return {_get_key_desinence(genre, nombre):( word, api)}, genre, nombre, api
             raise NotImplementedError("pas fini")
-        
-    assert len(set([x.parent for x in ldf])) == 1
+    else:
+        assert len(set([x.parent for x in ldf])) == 1
     tmp = [e.text.strip() for e in ldf[0].parent]
     tmp = [x for x in tmp if x not in ["",","]]
     apis = [i for i,x in enumerate(tmp) if x.startswith("\\") and x.endswith("\\")]
@@ -114,6 +131,9 @@ def extract_no_flextable(word,block):
     elif "invariable" in tmp:
         nombre = "invariable"
         tmp.remove("invariable")
+    elif "(Indénombrable)" in tmp:
+        nombre = "indénombrable"
+        tmp.remove("(Indénombrable)")
     else:
         raise ExtractException(f"pas de nombre trouvé pour {word}")
     return {_get_key_desinence(genre, nombre):( _orth, _api)}, genre, nombre, _api
@@ -152,7 +172,11 @@ def extract_flextable_new(word,block):
                 #NOTE arrivé là, on n'a pas de genre; c'est casse-bonbons
                 # on peut imaginer que c'est un flex-nom
                 # auquel cas, on peut sûrement récupérer l'info sur la page canonique du mot, au singulier
-                raise ExtractException(f"pas de genre trouvé pour {word}")
+
+                #ça peut aussi être un adjectif (nom?) masculin et féminin identique, mais mal formaté
+                #voir angiosperme adjectif
+                _genres = ["?"]
+                # raise ExtractException(f"pas de genre trouvé pour {word}")
             if "invariable" in ldf:
                 _nombres = ["invariable"]
             pass
@@ -176,7 +200,7 @@ def extract_flextable_new(word,block):
                     else:
                         raise ExtractException(f"1cas inattendu pour {word}")
             pass
-        if len(_genres)==1 and len(_nombres) == 2:
+        elif len(_genres)==1 and len(_nombres) == 2:
             # un seul genre (peut être: masculin et féminin identiques), singulier/pluriel
             if len(rows[1])==1:
                 t = rows[1][0].text.strip()
@@ -184,15 +208,21 @@ def extract_flextable_new(word,block):
                     rows = [[(rows[0][0].text.strip(), rows[1][0].text.strip()),(rows[0][1].text.strip(),rows[1][0].text.strip())]]
                 else:
                     raise ExtractException(f"2cas inattendu pour {word}")
+                #NOTE: j'aime pas trop ça, mais bon...
+                if _genres[0]=="?":
+                    # on suppose que c'est masculin et féminin identiques, non indiqué
+                    _genres = ["masculinetféminin"]
             else:
                 raise ExtractException(f"3cas inattendu pour {word}")
+        else:
+            raise ExtractException(f"4cas inattendu pour {word}")
     elif len(rows)==1:
         # rows = [[x.text for x in rows[0].find_all("a")]]
         rows = [[tuple(y.text.strip() for y in x.find_all("a")) for x in row]for row in rows]
         pass
 
 
-    if _genres[0]=="masculinetféminin":
+    if _genres[0]=="masculinetféminin" or _genres[0]=="masculin et féminin identiques":
         _genres = ["masculin", "féminin"]
         assert len(rows)==1
         rows.append(rows[0])
@@ -205,7 +235,7 @@ def extract_flextable_new(word,block):
                 assert len(row)==1
                 rows[i] = [row[0]]*len(_nombres)
         for i,row in enumerate(rows):
-            result.update({_get_key_desinence(_genres[i], _nombres[j]):(row[j][0], extract_api(row[j][1])) for j in range(len(_nombres))})
+            result.update({_get_key_desinence(_genres[i], _nombres[j]):word_t(row[j][0], extract_api(row[j][1])) for j in range(len(_nombres))})
             # for j in range(len(_nombres)):
             #     result[_get_key_desinence(_genres[i], _nombres[j])] = (row[j][0], extract_api(row[j][1]))
     else:
@@ -236,7 +266,19 @@ def extract_flextable_new(word,block):
     return result, genre, nombre, api
 
 def parse_flex_verb(w,block):
-    forme = block.find("ol").find("li").find("i").text.lower().split()
+    
+    
+    li = block.find("ol").find("li")
+    forme = None
+    if li.find("i") is not None:
+        forme = li.find("i").text.lower().split()
+    else:
+        #NOTE c'est sûrement une variante orthographique du verbe
+        #exemple: "écoeurez" -> "écœurez"
+        raise ExtractException(f"forme du verbe introuvable pour {w}")
+    # elif li.find("a") is not None:
+    #     forme = li.find("a").text.lower().split()
+    
     forme = [x for x in forme if x not in ["du","de", "verbe", "personne"]]
     for i,f in enumerate(forme):
         if f.startswith("l’"):
@@ -298,9 +340,9 @@ def default_api_handler(block, nature:str, w:str):
     api = extract_api(apis.text.strip())
     return {"nature":nature, "api":api, "mot":w}
 
-def new_master_scrapper(w):
+def new_master_scrapper(word:str):
     
-    page = requests.get(f"{BASE_URL}{w}")
+    page = requests.get(f"{BASE_URL}{word}")
     # page = requests.get("http://192.168.43.125:8181/wiktionary_fr_all_nopic_2020-10/A/%s" % w)
     soup = BeautifulSoup(unquote(page.content.decode('utf-8')), "html.parser")
     regex_nature = re.compile('[1-9]')
@@ -309,9 +351,12 @@ def new_master_scrapper(w):
     current_sense = None
     default_etymo = ()
     for b in iter_over_level2_blocks(soup):
-        if b.find("summary").text=="Français":
-            for block in b.find_all("details"):
-                if block["data-level"]=="3":
+        summary = b.find("summary")
+        if summary is None:
+            raise ExtractException(f"no summary found for {word}")
+        if summary.text=="Français":
+            for block in b.select("details"):
+                if block.get("data-level")=="3":
                     if current_sense is not None:
                         #  TODO il est possible que ce bloc de niveau 3 soit en rapport avec le sens courant
                         all_senses.append(current_sense)
@@ -329,10 +374,10 @@ def new_master_scrapper(w):
                             if current_sense is not None:
                                 current_sense["étymologie"] = etym
                             else:
-                                warnings.warn(f"étymologie trouvée pour {w} sans sens courant associé")
+                                warnings.warn(f"étymologie trouvée pour {word} sans sens courant associé")
                                 default_etymo = etym
                         else:
-                            warnings.warn(f"{w} etym {len(links)} liens, à vérifier")
+                            warnings.warn(f"{word} etym {len(links)} liens, à vérifier")
                             continue
                         continue
 
@@ -352,16 +397,16 @@ def new_master_scrapper(w):
                         nature = nature[5:]
 
                     if nature in ["nom", "adj"]:
-                        flextable, genre, nombre, api = extract_flextable_new(w,block)
+                        flextable, genre, nombre, api = extract_flextable_new(word,block)
                         # results.append(flextable)
                         if nombre == "invariable":
-                            print(f"{w} est invariable")
+                            print(f"{word} est invariable")
                         print(flextable)
                         ol = block.find("ol")
                         semantics = extract_ol_semantic(ol)
                         # info_t = word_info_t(nature, api, genre[0], nombre, lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, mot=w)
                         #TODO: on renvoie le genre mais pas le nombre ?
-                        current_sense={"nature":nature, "api":api, "mot":w, "genre":genre[0], "nombre":nombre, "semantics":semantics, "flex":flextable}
+                        current_sense={"nature":nature, "api":api, "mot":word, "genre":genre[0], "nombre":nombre, "semantics":semantics, "flex":flextable}
                     elif nature == "verb":
                         infinitif = None
                         if flex:
@@ -372,11 +417,11 @@ def new_master_scrapper(w):
                             
                             infinitif = t.find("a", href=re.compile("^Conjugaison:français/"))
                             if infinitif is None:
-                                warnings.warn(f"infinitif non trouvé pour {w}")
+                                warnings.warn(f"infinitif non trouvé pour {word}")
                                 pass
-                            infinitif.attrs["href"][21:]
+                            infinitif = infinitif.attrs["href"][21:]
                             ##################################
-                            forme = parse_flex_verb(w,block)
+                            forme = parse_flex_verb(word,block)
                             if len(forme) == 3:
                                 #                                                                part. pst/passé,  genre,   nombre
                                 current_sense = {"nature":"flex-verb", "infinitif":infinitif, "forme":(forme[0], forme[1], forme[2])}
@@ -384,23 +429,27 @@ def new_master_scrapper(w):
                                 #                                                                   personne,  nombre,   temps,    mode    
                                 current_sense = {"nature":"flex-verb", "infinitif":infinitif, "forme":(forme[0], forme[1], forme[3], forme[2])}
                             else:
-                                raise ExtractException(f"forme de verbe inattendue pour {w}: {forme}")
+                                raise ExtractException(f"forme de verbe inattendue pour {word}: {forme}")
                         else:
                             conjug_extractor = ConjugExtract()
-                            verb_dict = conjug_extractor.extract_verb_info_wiki(w)
+                            transitif=True
+                            if "intransitif" in block.find("summary").findNextSibling("p").text:
+                                transitif=False
+                            verb_dict = conjug_extractor.extract_verb_info_wiki(word)
+                            verb_dict["transitif"]=transitif
                             #TODO: que faire avec cet objet à présent ? on a extrait la conjugaison, il nous faut les infos sémantiques
                             #TODO visiter la page du verbe pour extraire les infos
-                            current_sense = {"nature":"verb", "conjugaison":verb_dict}
+                            current_sense = {"nature":"verb", "mot":verb_dict["inf"].ort, "api":verb_dict["inf"].api, "conjugaison":verb_dict}
                     elif nature == "ad-rel":
                         pass
                     elif nature == "art-déf":
-                        flextable, genre, nombre, api = extract_flextable_new(w,block)
+                        flextable, genre, nombre, api = extract_flextable_new(word,block)
                         assert None not in [flextable, genre, nombre, api]
-                        current_sense={"nature":nature, "api":api, "mot":w, "genre":genre, "nombre":nombre, "flex":flextable}
+                        current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
                     elif nature == "pronom-pers":
-                        flextable, genre, nombre, api = extract_flextable_new(w,block)
+                        flextable, genre, nombre, api = extract_flextable_new(word,block)
                         assert None not in [flextable, genre, nombre, api]
-                        current_sense={"nature":nature, "api":api, "mot":w, "genre":genre, "nombre":nombre, "flex":flextable}
+                        current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
                     elif nature == "pronom-rel":
                         pass
                     elif nature == "interj":
@@ -408,26 +457,29 @@ def new_master_scrapper(w):
                     elif nature == "pronom-int":
                         pass
                     elif nature == "art-indéf":
-                        flextable, genre, nombre, api = extract_flextable_new(w,block)
+                        flextable, genre, nombre, api = extract_flextable_new(word,block)
                         assert None not in [flextable, genre, nombre, api]
-                        current_sense={"nature":nature, "api":api, "mot":w, "genre":genre, "nombre":nombre, "flex":flextable}
+                        current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
                     elif nature == "conj":
-                        current_sense = default_api_handler(block, nature, w)
+                        current_sense = default_api_handler(block, nature, word)
                         if current_sense is None:
-                            raise ExtractException(f"échec de l'extraction pour {w} {nature}")
+                            raise ExtractException(f"échec de l'extraction pour {word} {nature}")
                         pass
                     elif nature=="conj-coord":
-                        current_sense = default_api_handler(block, nature, w)
+                        current_sense = default_api_handler(block, nature, word)
                         if current_sense is None:
-                            raise ExtractException(f"échec de l'extraction pour {w} {nature}")
+                            raise ExtractException(f"échec de l'extraction pour {word} {nature}")
                     elif "adv" in nature:
                         pass
                     else:
-                        raise ExtractException(f"nature {nature} non gérée pour {w}")
-                elif block["data-level"]=="4":
+                        raise ExtractException(f"nature {nature} non gérée pour {word}")
+                elif block.get("data-level")=="4":
                     # TODO il est possible que ce bloc de niveau 4 soit en rapport avec le sens courant
-                    title = block.summary.text.strip().lower()
-                    print(f"skipped level 4 block : {title}")
+                    if block.summary is not None:
+                        title = block.summary.text.strip().lower()
+                        # print(f"skipped level 4 block : {title}")
+                    # else:
+                    #     print(f"skipped level 4 block : [no title]")
                     pass
     if current_sense is not None:
         all_senses.append(current_sense)
@@ -453,33 +505,56 @@ def test_forme_verbe(w:str):
                         infinitif = None
                         return parse_flex_verb(w,block)
 
-mots = ["les", "aux", "des,", "la","des","donc", "où", "quand", "mais", "si", "et", "or", "ni", "car", "comment", "carrément", "pourquoi", "quel", "quelle", "quelles", "quels", "lequel", "laquelle", "lesquelles", "lesquels", "auquel", "à laquelle", "auxquelles", "auxquels", "duquel", "de laquelle", "desquelles", "desquels"]
-result = None
-for w in mots:
-    try:
-        result[w] = new_master_scrapper(w)
-    except Exception as e:
-        print(f"Erreur lors de l'extraction pour {w}: {e}")
-        
-print(result)
-words_list=load_words_list("data/gutenberg.txt")
+
 
 def test_scrapper(words:list[str], n=10):
     test_words = random.sample(words, n)
-    results = {}
-    for w in test_words:
+    return bulk_scrap(test_words)
+
+def bulk_scrap(words:list[str]):
+    all_results = {}
+    root = WTupleNode()
+    errors = set()
+    for word in words:
+        if "-" in word:
+            warnings.warn(f"skip {word} with hyphen")
+            errors.add(word)
+            continue
         try:
-            results[w] = new_master_scrapper(w)
-        except Exception as e:
-            print(f"Erreur lors de l'extraction pour {w}: {e}")
-    print(f"{len(results)/n*100}% de réussite")
-    return results
+            all_results[word] = new_master_scrapper(word)
+            for w in all_results[word]:
+                if w["nature"] == "verb":
+                    verb_obj = Verb_info(w["conjugaison"])
+                    all_results[verb_obj.infinitif.ort] = [{'nature':"verb", "conjugaison":verb_obj}]
+                if w["nature"] == "flex-verb":
+                    infinitif = w["infinitif"]
+                    verb_obj = Verb_info.get(infinitif)
+                    if verb_obj is None and not infinitif in all_results:
+                        infi = new_master_scrapper(infinitif)
+                        verb_obj = None
+                        #TODO un peu n'imp
+                        # on risque de perdre les autres natures du mot
+                        # aussi peut etre on peut trouver deux verbes différents avec le même infinitif ??
+                        for entry in infi:
+                            if entry["nature"] == "verb":
+                                
+                                verb_obj = Verb_info(entry["conjugaison"])
+                                all_results[verb_obj.infinitif.ort] = [{'nature':"verb", "conjugaison":verb_obj}]
+                        
+                        n = root.addData({"nature":"verb","mot":verb_obj.infinitif.ort,"api":verb_obj.infinitif.api, "conjugaison":verb_obj})
+                        #TODO ajouter toutes les formes à l'arbre
+                        radical_node = root.search(verb_obj.radical)
+                        assert radical_node is not None, f"erreur, radical {verb_obj.radical} non trouvé dans l'arbre"
+                        for term in verb_obj.terminaisons:
+                            # NOTE on peut mieux faire
+                            # NOTE je suis pas pret pour ça
+                            pass
+                        all_results[infinitif] = [{'nature':"verb", "conjugaison":verb_obj}]
+                else:
+                    word_node = root.addData(w)
+        except ExtractException as e:
+            errors.add(word)
+            
+            print(e)
+    return all_results, errors
 
-problemes = {w:new_master_scrapper(w) for w in ["poisseux", "sableuse", "outrageante"]}
-test_scrapper(words_list,200)
-# avec "rapides" c'est relou. 
-# Le block adjectif est ok: il indique "masculin et féminin identique"
-# par contre la forme de nom commun n'indique rien, il faut deviner 
-
-# test_parse_flextable("rapides")
-# results = [(w,test_parse_flextable(w)) for w in ["ami","amie","amis","amies","temps","belle","beau","beaux","belles","heureux","heureuse","heureuses","heureuxs","rapide","rapides","lent","lente","lentes","lents", "cartouche", "cartouches"]]

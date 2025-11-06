@@ -1,4 +1,5 @@
 import re
+from typing import Any
 from bs4 import BeautifulSoup
 import requests
 import warnings
@@ -95,7 +96,7 @@ class ConjugExtract(object):
                     raise ExtractException(f"problème conjugaison pour {v} forme1='{forme1}' forme2='{forme2}'")
         return types_conjug
 
-    def extract_verb_info_wiki(self, v:str):
+    def extract_verb_info_wiki(self, v:str) -> dict[str,Any]:
         """
         Scrappe la conjugaison d'un verbe sur wiktionary
         TODO: gérer les conjugaisons pronominales, impersonnelles, ...
@@ -114,6 +115,7 @@ class ConjugExtract(object):
             return None
         
         self.current_verb = v
+        transitif = True
         page = requests.get(f"{BASE_VERB_URL}{v}")
         
         soup = BeautifulSoup(page.content, "html.parser")

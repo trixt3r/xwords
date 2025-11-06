@@ -1,4 +1,5 @@
 from enum import IntFlag, Enum, auto
+from typing import Optional
 import warnings
 from scrap_base import search_gcd
 from words_tuple import word_t
@@ -252,7 +253,7 @@ class Verb_info:
 
     def __init__(self, verbe_struct,compressed=False):
         self.auxiliaire = AuxFlag.UNKNOWN
-        self.transitivité = TransitFlag.UNKNOWN
+        self.transitif = verbe_struct["transitif"] if "transitif" in verbe_struct else TransitFlag.UNKNOWN
         self.compressed = compressed
         if compressed:
             verbe_struct, ort_radic, api_radic = compress_verb_dict(verbe_struct)
@@ -334,21 +335,41 @@ class Verb_info:
     def __repr__(self):
         return "<verbe: {}>".format(self.infinitif.ort)
 
+    def getMode(self, mode:VerbModeEnum, temps:Optional[VerbTempsEnum]=None, personne_idx:Optional[int]=None,return_tuple:bool=False):
+        prepare = None
+        if return_tuple:
+            prepare = lambda x: x
+        else:
+            prepare = lambda x: x.ort
+        if temps is not None:
+            temps_obj = self.modes[mode][temps]
+            if personne_idx is not None:
+                return prepare(self.modes[mode][temps][personne_idx])
+            else:
+                return prepare([x for x in temps_obj])
+        else:
+            raise NotImplementedError("get mode sans temps non implémenté")
     #exemples: getMode("Indicatif") getMode("Indicatif:Présent"), getMode("Indicatif:Présent:1s"), getMode("Impératif:Présent:2p")
-    def getMode(self, m, t=None):
-        mode_s = ""
-        temps_s = None
+    def getMode_str(self, m:str, t=None):
+        # mode_s = ""
+        # temps_s = None
+        temps = None
+        mode = None
         personne_s = None
         personne_idx = None
-        mode = None
         if t is None:
-            m = m.split(':')
+            toks = m.split(':')
             # mode = Verb_info.modes_dict[m[0]]
-            mode = VerbModeEnum.fromName(m[0])
-            if len(m) >= 2:
-                temps = VerbTempsEnum.fromName(m[1].replace(" ","_").replace("-","_"))
-            if len(m) == 3:
-                personne_s = m[2]
+            mode = VerbModeEnum.fromName(toks[0])
+            if len(toks) >= 2:
+                temps = VerbTempsEnum.fromName(toks[1].replace(" ","_").replace("-","_"))
+            if len(toks) == 3:
+                personne_s = toks[2]
+                personne_idx = int(personne_s[0]) - 1
+                if personne_s[1].lower() == 'p':
+                    personne_idx += 3
+
+                
         else:
             raise Exception("utilisation dépréciée de getMode, utiliser getMode('Mode:Temps:Personne')")
             mode_s = m
@@ -367,16 +388,13 @@ class Verb_info:
                 raise Exception(f"temps {t} inconnu pour le mode {m[0]} du verbe {self.infinitif}")
             mode = mode[temps]
 
-        if personne_s is not None:
-            print(f"personne: {personne_s}")
-            assert len(personne_s) == 2, "personne inconnue: " + personne_s
-            assert personne_s == "on" or (personne_s[0] in ["1", "2", "3"] and personne_s[1].lower() in 'sp'), "personne inconnue: " + personne_s
-            assert personne_s == "on" or (personne_s[0] in "123" and personne_s[1].lower() in 'sp'), "personne inconnue: " + personne_s
+        # if personne_s is not None:
+        #     print(f"personne: {personne_s}")
+        #     assert len(personne_s) == 2, "personne inconnue: " + personne_s
+        #     assert personne_s == "on" or (personne_s[0] in ["1", "2", "3"] and personne_s[1].lower() in 'sp'), "personne inconnue: " + personne_s
+        #     assert personne_s == "on" or (personne_s[0] in "123" and personne_s[1].lower() in 'sp'), "personne inconnue: " + personne_s
             
-            personne_idx = int(personne_s[0]) - 1
-            if personne_s[1].lower() == 'p':
-                personne_idx += 3
-
+            
         if personne_idx is None:
             if self.compressed:
                 return [decompress_word_t(w,self.ort_radic, self.api_radic) for w in mode]
@@ -405,9 +423,9 @@ class Verb_info:
             mode = v[1].capitalize()
             if len(v) > 2:
                 temps = v[2].capitalize()
-                return verb.getMode(mode, temps)
+                return verb.getMode_str(mode, temps)
             else:
-                return verb.getMode(mode)
+                return verb.getMode_str(mode)
         return verb
 
     @classmethod
@@ -501,15 +519,7 @@ def convert_verb_list(fname):
             print("%s %d" % (v, cnt))
     return to_ret
 
-class Verb_flex:
-    verb = None
-    mode = None
-    temps = None
-    pronom = None
-    def __unicode__(self):
-        # w = self.verb.modes[self.mode][self.temps][self.pronom-1].ort
-        w = "<{}:{}:{}:{}>".format(self.verb.infinitif,self.temps,self.mode,self.pronom-1)
-        return w
+
 
 
 # gestion terminaisons
@@ -541,3 +551,47 @@ def add_verbs_to_index(idx):
 # rad_ort = search_gcd(orths)
 # term_ort = [x[len(rad_ort):] for x in orths]
 
+class Verb_flex:
+    verb:Verb_info = None
+    mode:VerbModeEnum = None
+    temps:VerbTempsEnum = None
+    pronom:int = None
+
+    def __init__(self, verb:Verb_info, mode:VerbModeEnum, temps:VerbTempsEnum, pronom:int):
+        """
+        pronom: 0..5 (1s,2s,3s,1p,2p,3p)
+        """
+        self.verb = verb
+        self.mode = mode
+        self.temps = temps
+        self.pronom = pronom
+
+    @classmethod
+    def from_str(cls, verb:Verb_info, flex_str:str):
+        toks = flex_str.split(":")
+        mode = VerbModeEnum.fromName(toks[0])
+        temps = VerbTempsEnum.fromName(toks[1].replace(" ","_").replace("-","_"))
+        personne_s = toks[2]
+        personne_idx = int(personne_s[0]) - 1
+        if personne_s[1].lower() == 'p':
+            personne_idx += 3
+        return cls(verb, mode, temps, personne_idx)
+
+    def get_word(self, get_tuple:bool=False)->word_t:
+        return self.verb.getMode(self.mode, self.temps, self.pronom, get_tuple)
+
+    def __unicode__(self):
+        pronoms=["je","tu","il/elle/on","nous","vous","ils/elles"]
+        # w = self.verb.modes[self.mode][self.temps][self.pronom-1].ort
+        w = f"<{self.verb.infinitif.ort}:{self.mode}:{self.temps}:{self.pronom} ({pronoms[self.pronom]})>"
+        return w
+    
+    def __repr__(self):
+        return self.__unicode__()
+
+class ConjVerbStr(str):
+    flex:Verb_flex = None
+    def __new__(cls, flex:Verb_flex):
+        instance = str.__new__(cls, flex.get_word())
+        instance.flex = flex
+        return instance

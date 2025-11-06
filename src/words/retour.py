@@ -1,5 +1,8 @@
 import os
 import numpy as np
+from enum import IntEnum
+# from essai import word_to_groups
+from bits import *
 
 os.environ["PATH"] += os.pathsep + 'C:/Users/HP/graphviz_bin'
 from pprint import pprint
@@ -139,6 +142,85 @@ def split_list(l, filter):
         else:
             n.append(e)
     return y,n
+
+
+class TokEnumBase(IntEnum):
+    bitmask: int
+    offset: int
+    valid_word: bool
+    name_str: str
+
+    def __new__(cls, *args):
+        # args is typically (value,) or (value, extra)
+        value = args[0]
+        # extra = args[1] if len(args) > 1 else None
+        # create the int-backed enum member
+        obj = int.__new__(cls, value)
+        obj._value_ = value
+        # attach any extra attributes you need
+        obj.name_str = args[1]
+        obj.bitmask = args[2] if len(args) > 1 else 0
+        obj.offset = args[3] if len(args) > 2 else 0
+        obj.valid_word = args[4] if len(args) > 3 else False
+        return obj
+
+    def has_token(self, tok)->bool:
+        return self.value & tok.bitmask == tok.value
+
+    @classmethod
+    def valid_words(cls):
+        for tok in cls:
+            if tok.valid_word:
+                yield tok
+
+
+
+def new_bitmask(length_and_offsets:list[tuple[int,int]]):
+    ret = 0
+    for length, offset in length_and_offsets:
+        ret |= ((1 << length) - 1) << offset
+    return ret
+
+# def create_bitmask(length,offset):
+#     bitmask =  ((1 << length) - 1) << offset
+#     assert bitmask == new_bitmask([(length,offset)])
+
+# def bitmask_for_group(grps2tokens,gid):
+#     bitmask = None
+#     if isinstance(gid,list):
+#         bitmask = (sum(bitmask_for_group(grps2tokens,g) for g in gid))
+#     else:
+#         bitmask = create_bitmask(len(grps2tokens[gid]).bit_length(), sum(len(grps2tokens[g]).bit_length() for g in range(gid)))
+    
+#     return bitmask
+
+# def offset_for_group(grps2tokens,gid):
+#     return sum(len(grps2tokens[g]).bit_length() for g in range(gid))
+
+# def word_to_groups(word:str, grp2tokens)->list[int]:
+#     groups = []
+#     for gid, tokens in enumerate(grp2tokens):
+#         if any(tok in word for tok in tokens):
+#             groups.append(gid)
+#     return groups
+
+
+
+
+
+def token_to_grp(tok:str,grp2tokens)->int:
+    for gid, tokens in enumerate(grp2tokens):
+        if tok in tokens:
+            return gid
+    raise Exception(f"token not found {tok}")
+
+def word_to_code(tokens:list[str], grp2tokens:list[list[str]])->tuple[int,...]:
+    code = [0]*len(grp2tokens)
+    for tok in tokens:
+        grp = token_to_grp(tok, grp2tokens)
+        code[grp] = grp2tokens[grp].index(tok)+1
+    return tuple(code)
+
 
 class ArboComp(object):
     """
@@ -450,11 +532,18 @@ class ArboComp(object):
         # print(matrix)
         # toks = {t:set([tok for w in self.values for tok in self.tokenizer(w) if t!=tok and t in self.tokenizer(w)]) for t in self.tokens}
         # matrix = create_tokens_matrix(toks)
+
+        # on a besoin de ces deux séquences pour la suite, résolution des collisions
         value2groups = ((v,[token2group[t] for t in self.tokenizer(v)]) for v in self.values)
         collisions = {value:groups for value,groups in value2groups if not len(set(groups))==len(groups)}
+        
+        # ce set est pour le futur, ameliorer l'algo, tenter d'inserer les tokens isolés
+        # dans un groupe préexistant si possible, pour optimiser l'espace mémoire utilisé
         isolated = set()
-        # plusieurs tokens à la meme position, impossible. Repartitionner
+        
+        # Repartitionner
         while not len(collisions) == 0:
+            #TODO c'est surement mieux d'identifier le groupe avec le plus de collisions et de le traiter en priorité
             value, grps = collisions.popitem()
             fault_grps = set([g for g in grps if grps.count(g)>1])
             if len(fault_grps)==1:
@@ -472,27 +561,60 @@ class ArboComp(object):
                         token2group[tok] = new_group_id
                         isolated.add(tok)
 
+            # on recalcule les collisions
             token2group = {t:gid for gid in range(len(grp2tokens)) for t in grp2tokens[gid]}
             value2groups = ((v,[token2group[t] for t in self.tokenizer(v)]) for v in self.values)
             collisions = {value:states for value,states in value2groups if not len(set(states))==len(states)}
-            
-        assert len(collisions) == 0
+        
+        # group_paths = {word:tuple([token2group[tok] for tok in self.tokenizer(word)]) for word in self.values}
+        # unique_paths = set(group_paths[v] for v in self.values)
+        # path2tokens = {p:[ word for word, path in group_paths.items() if path==p] for p in unique_paths}
 
-        for i,grp in enumerate(grp2tokens):
-            print(f"grp {i} :  {len(grp2tokens[i])} tokens {(len(grp2tokens[i])+1).bit_length()} bits")
-            print(f"{grp2tokens[i]}")
-        
-        group_paths = {word:tuple([token2group[tok] for tok in self.tokenizer(word)]) for word in self.values}
-        unique_paths = set(group_paths[v] for v in self.values)
-        path2tokens = {p:[ word for word, path in group_paths.items() if path==p] for p in unique_paths}
-        # matrix = self.create_path_matrix(token2group, len(grp2tokens))
-        # for token in isolated:
-        #     gid = token2group[token]
-        #     matrix[gid,gid]=1
-        # print(matrix)
-        # for       
-        return grp2tokens
-        
+        bit_fields_lengths = [len(grp).bit_length() for grp in grp2tokens]
+        self.grp2tokens = grp2tokens
+        enum_values = {w.replace("-", "_").upper(): (token_to_bits(self.word_to_code(self.tokenizer(w)),  bit_fields_lengths), w, self.bitmask_for_group(self.word_to_groups(w)), 0, True)
+         for w in self.values}
+        #NOTE add also single-token natures, those are not strictly values, but useful to have as individual tokens, for tests
+        enum_values.update({tok.upper(): (token_to_bits(self.word_to_code(self.tokenizer(tok)),  bit_fields_lengths), tok, self.bitmask_for_group(self.token_to_grp(tok)), self.offset_for_group(self.token_to_grp(tok)), False)  
+        for tok in self.tokens if tok not in self.values})
+
+        return TokEnumBase("NatTok",enum_values)
+    
+    def token_to_grp(self,tok:str)->int:
+        for gid, tokens in enumerate(self.grp2tokens):
+            if tok in tokens:
+                return gid
+        raise Exception(f"token not found {tok}")
+
+    def word_to_code(self,tokens:list[str])->tuple[int,...]:
+        code = [0]*len(self.grp2tokens)
+        for tok in tokens:
+            grp = self.token_to_grp(tok)
+            code[grp] = self.grp2tokens[grp].index(tok)+1
+        return tuple(code)
+
+    def create_bitmask(self, length:int,offset):
+        return ((1 << length) - 1) << offset
+
+    def bitmask_for_group(self,gid):
+        return new_bitmask([(len(self.grp2tokens[g]).bit_length(), sum(len(self.grp2tokens[h]).bit_length() for h in range(g))) for g in (gid if isinstance(gid,list) else [gid])])
+        bitmask = None
+        if isinstance(gid,list):
+            bitmask = (sum(self.bitmask_for_group(g) for g in gid))
+        else:
+            bitmask = self.create_bitmask(len(self.grp2tokens[gid]).bit_length(), sum(len(self.grp2tokens[g]).bit_length() for g in range(gid)))
+        assert bitmask == new_bitmask([(len(self.grp2tokens[g]).bit_length(), sum(len(self.grp2tokens[h]).bit_length() for h in range(g))) for g in (gid if isinstance(gid,list) else [gid])]), f"mismatch bitmask_for_group for gid {gid}"
+        return bitmask
+
+    def offset_for_group(self,gid):
+        return sum(len(self.grp2tokens[g]).bit_length() for g in range(gid))
+
+    def word_to_groups(self,word:str)->list[int]:
+        groups = []
+        for gid, tokens in enumerate(self.grp2tokens):
+            if any(tok in word for tok in tokens):
+                groups.append(gid)
+        return groups
 
     def create_path_matrix(self,token2group, num_groups):
         group_paths = {word:tuple([token2group[tok] for tok in self.tokenizer(word)]) for word in self.values}
@@ -515,6 +637,11 @@ def create_tokens_matrix(toks:dict[str,set[str]]):
             matrix[gid,gid2]=1
             matrix[gid2,gid]=1
     return matrix
+
+
+
+
+
 
 # from pprint import pprint
 # natures = {'pronom-rel', 'flex-verb', 'nom', 'flex-art-déf', 'var-typo', 'adj-dém', 'part', 'flex-art-indéf', 'flex-adj-pos', 'adj-indéf', 'prénom', 'nom-pr', 'pronom-pers', 'adj', 'adv', 'verb', 'art-part', 'flex-adj', 'flex-adj-indéf', 'onoma', 'adj-int', 'conj-coord', 'flex-adj-dém', 'adv-int', 'flex-nom', 'interj', 'symb', 'flex-pronom-dém', 'adv-rel', 'suf', 'pronom-dém', 'flex-pronom-rel', 'flex-pronom-pers', 'phr', 'flex-prép', 'lettre', 'adj-num', 'pronom-int', 'prép', 'flex-pronom-int', 'adj-rel', 'adj-pos', 'flex-adv', 'pronom', 'nom-fam', 'pronom-indéf', 'flex-pronom-indéf', 'art-indéf', 'flex-adj-int', 'art-déf', 'conj'}
