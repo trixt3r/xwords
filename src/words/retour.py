@@ -1,4 +1,6 @@
 import os
+import numpy as np
+
 os.environ["PATH"] += os.pathsep + 'C:/Users/HP/graphviz_bin'
 from pprint import pprint
 
@@ -153,7 +155,7 @@ class ArboComp(object):
     - Statistics about token position patterns and usage
     """
     
-    def __init__(self, tokenizer= lambda x:x.split('-'), joiner=lambda x: '-'.join(x)):
+    def __init__(self, words:set[str], tokenizer= lambda x:x.split('-'), joiner=lambda x: '-'.join(x)):
         """
         Initialize the ArboComp analyzer.
         
@@ -168,6 +170,8 @@ class ArboComp(object):
         self.tokens = []            # Master list of all unique tokens encountered
         self.values = []            # List of all original string values added
         self.values_max_token_count = 0          # Maximum number of tokens in any single value
+        for n in words:
+            self.add_tokens(n)
 
     def comp_tokens(self, value) -> list[int]:
         """
@@ -386,13 +390,14 @@ class ArboComp(object):
         - initiaux: tokens that ONLY appear at the start of values
         """
         # Initialize counters for each token: [pos_counts..., init_count, fin_count, state_bitmask]
-        counters = {}
         self.tokens.sort()
         self.values.sort()
-        counters_new = {}
-        for tok in self.tokens:
-            counters[tok] = [0] * (self.values_max_token_count + 1 + 1 + 1)
-            counters_new[tok] = ArboComp.arbo_state(token=tok, positions=[], start_of_value=0, end_of_value=0)
+
+        counters_new = {tok:ArboComp.arbo_state(token=tok, positions=[], start_of_value=0, end_of_value=0) for tok in self.tokens}
+        counters = {tok: [0] * (self.values_max_token_count + 1 + 1 + 1) for tok in self.tokens}
+        # for tok in self.tokens:
+        #     counters[tok] = [0] * (self.values_max_token_count + 1 + 1 + 1)
+        #     counters_new[tok] = ArboComp.arbo_state(token=tok, positions=[], start_of_value=0, end_of_value=0)
 
         
         # Define special indices in the counter arrays
@@ -406,6 +411,7 @@ class ArboComp(object):
             for i, token in enumerate(tokens):
                 # Count occurrence at this position
                 counters_new[token].inc_counters(pos=i, at_start=(i==0), at_end=(i==len(tokens)-1))
+                
                 counters[token][i] += 1
                 # Track if this token appears at the end of this value
                 if i == len(tokens) - 1:
@@ -417,9 +423,13 @@ class ArboComp(object):
                     
                 # Update the state bitmask to include this position
                 counters[token][GROUP] = counters[token][GROUP] | pow(2, i)
-        
+        # counters = {tok:{k2:v2 for k2,v2 in v.items() if v2!=0} for tok,v in counters.items()}
         # Compute derived statistics
-        for k, v in counters.items():
+        for token, pos_counter in counters.items():
+            assert (counters_new[token].position_counters == {i: pos_counter[i] for i in range(self.values_max_token_count) if pos_counter[i]!=0}), f"mismatch for token {token}"
+            assert counters_new[token].start_counter == pos_counter[INIT], f"mismatch for token {token}"
+            assert counters_new[token].end_counter == pos_counter[FIN], f"mismatch for token {token}"
+            # assert counters_new[token].group_counter == pos_counter[GROUP], f"mismatch for token {token}"
             pass
             
         # # Find tokens that appear ONLY at the end (fin_count equals total_count)
@@ -432,12 +442,17 @@ class ArboComp(object):
         groups = list(set(v[GROUP] for k, v in counters.items()))
         groups.sort()
         grp2tokens = [[k for k, v in counters.items() if v[GROUP] == e] for e in groups]
+        del groups
         
         token2group = {t:gid for gid in range(len(grp2tokens)) for t in grp2tokens[gid]}
-
+        
+        # matrix = self.create_path_matrix(token2group, len(grp2tokens))
+        # print(matrix)
+        # toks = {t:set([tok for w in self.values for tok in self.tokenizer(w) if t!=tok and t in self.tokenizer(w)]) for t in self.tokens}
+        # matrix = create_tokens_matrix(toks)
         value2groups = ((v,[token2group[t] for t in self.tokenizer(v)]) for v in self.values)
-        collisions = {value:states for value,states in value2groups if not len(set(states))==len(states)}
-
+        collisions = {value:groups for value,groups in value2groups if not len(set(groups))==len(groups)}
+        isolated = set()
         # plusieurs tokens à la meme position, impossible. Repartitionner
         while not len(collisions) == 0:
             value, grps = collisions.popitem()
@@ -455,16 +470,51 @@ class ArboComp(object):
                         grp2tokens.append([tok])
                         grp2tokens[token2group[tok]].remove(tok)
                         token2group[tok] = new_group_id
+                        isolated.add(tok)
 
             token2group = {t:gid for gid in range(len(grp2tokens)) for t in grp2tokens[gid]}
             value2groups = ((v,[token2group[t] for t in self.tokenizer(v)]) for v in self.values)
             collisions = {value:states for value,states in value2groups if not len(set(states))==len(states)}
-            pass
+            
         assert len(collisions) == 0
+
+        for i,grp in enumerate(grp2tokens):
+            print(f"grp {i} :  {len(grp2tokens[i])} tokens {(len(grp2tokens[i])+1).bit_length()} bits")
+            print(f"{grp2tokens[i]}")
         
+        group_paths = {word:tuple([token2group[tok] for tok in self.tokenizer(word)]) for word in self.values}
+        unique_paths = set(group_paths[v] for v in self.values)
+        path2tokens = {p:[ word for word, path in group_paths.items() if path==p] for p in unique_paths}
+        # matrix = self.create_path_matrix(token2group, len(grp2tokens))
+        # for token in isolated:
+        #     gid = token2group[token]
+        #     matrix[gid,gid]=1
+        # print(matrix)
+        # for       
         return grp2tokens
         
 
+    def create_path_matrix(self,token2group, num_groups):
+        group_paths = {word:tuple([token2group[tok] for tok in self.tokenizer(word)]) for word in self.values}
+        unique_paths = set(group_paths[v] for v in self.values)
+        matrix = np.zeros((num_groups, num_groups), dtype=int)
+        for p in unique_paths:
+            for gid in p:
+                for gid2 in p:
+                    matrix[gid,gid2] = 1
+                    matrix[gid2,gid] = 1
+        return matrix
+
+def create_tokens_matrix(toks:dict[str,set[str]]):
+    token_list = sorted(list(toks.keys()))
+    matrix = np.zeros((len(toks), len(toks)), dtype=int)
+    for t in toks:
+        gid = token_list.index(t)
+        for t2 in toks[t]:
+            gid2 = token_list.index(t2)
+            matrix[gid,gid2]=1
+            matrix[gid2,gid]=1
+    return matrix
 
 # from pprint import pprint
 # natures = {'pronom-rel', 'flex-verb', 'nom', 'flex-art-déf', 'var-typo', 'adj-dém', 'part', 'flex-art-indéf', 'flex-adj-pos', 'adj-indéf', 'prénom', 'nom-pr', 'pronom-pers', 'adj', 'adv', 'verb', 'art-part', 'flex-adj', 'flex-adj-indéf', 'onoma', 'adj-int', 'conj-coord', 'flex-adj-dém', 'adv-int', 'flex-nom', 'interj', 'symb', 'flex-pronom-dém', 'adv-rel', 'suf', 'pronom-dém', 'flex-pronom-rel', 'flex-pronom-pers', 'phr', 'flex-prép', 'lettre', 'adj-num', 'pronom-int', 'prép', 'flex-pronom-int', 'adj-rel', 'adj-pos', 'flex-adv', 'pronom', 'nom-fam', 'pronom-indéf', 'flex-pronom-indéf', 'art-indéf', 'flex-adj-int', 'art-déf', 'conj'}
@@ -493,14 +543,14 @@ class ArboComp(object):
 
 datas = collect_and_count_attribute_values(root, 'nature')
 
-def flagiz(values: list[int]) -> int:
-    ret = 0
-    offset=0
-    for v in values:
-        l = v.bit_length()
-        ret = v<<offset | ret
-        offset+=l
-    return ret
+# def flagiz(values: list[int]) -> int:
+#     ret = 0
+#     offset=0
+#     for v in values:
+#         l = v.bit_length()
+#         ret = v<<offset | ret
+#         offset+=l
+#     return ret
 
 # #NOTE fausse route
 # def testo():

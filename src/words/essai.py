@@ -31,7 +31,7 @@ def word_to_groups(word:str, grp2tokens)->list[int]:
             groups.append(gid)
     return groups
 
-def token_to_bits(token_code, bit_fields_lengths, reverse: bool = True):
+def token_to_bits(token_code, bit_fields_lengths, reverse: bool = True)->int:
     """
     Pack a tuple of integer codes into a single integer according to the provided
     bit field lengths.
@@ -51,7 +51,7 @@ def token_to_bits(token_code, bit_fields_lengths, reverse: bool = True):
         shift += b_f_l
     return bits
 
-def bits_to_token(bits, bit_fields_lengths, reverse: bool = True):
+def bits_to_token(bits:int, bit_fields_lengths, reverse: bool = True)->tuple[int]:
     """
     Unpack an integer into a tuple of integer codes according to the bit field lengths.
 
@@ -76,10 +76,46 @@ def bits_to_token(bits, bit_fields_lengths, reverse: bool = True):
             shift += b_f_l
     return tuple(token_code)
 
+class TokEnumBase(IntEnum):
+    def __new__(cls, *args):
+        # args is typically (value,) or (value, extra)
+        value = args[0]
+        # extra = args[1] if len(args) > 1 else None
+        # create the int-backed enum member
+        obj = int.__new__(cls, value)
+        obj._value_ = value
+        # attach any extra attributes you need
+        obj.bitmask = args[1] if len(args) > 1 else 0
+        obj.offset = args[2] if len(args) > 2 else 0
+        obj.valid_word = args[3] if len(args) > 3 else False
+        return obj
+
+    def has_token(self, tok)->bool:
+        return self.value & tok.bitmask == tok.value
+
+    @classmethod
+    def valid_words(cls):
+        for tok in cls:
+            if tok.valid_word:
+                yield tok
+
+def token_to_grp(tok:str,grp2tokens)->int:
+    for gid, tokens in enumerate(grp2tokens):
+        if tok in tokens:
+            return gid
+    raise Exception(f"token not found {tok}")
+
+def word_to_code(tokens:list[str], grp2tokens:list[list[str]])->tuple[int]:
+    code = [0]*len(grp2tokens)
+    for tok in tokens:
+        grp = token_to_grp(tok, grp2tokens)
+        code[grp] = grp2tokens[grp].index(tok)+1
+    return tuple(code)
+
 def test_arbo(values_set):
-    arbo = ArboComp()
-    for n in values_set:
-        arbo.add_tokens(n)
+    arbo = ArboComp(values_set)
+    # for n in values_set:
+    #     arbo.add_tokens(n)
 
     for n in arbo.values:
         print(n , arbo.comp_tokens(n))
@@ -89,53 +125,23 @@ def test_arbo(values_set):
     
     grp2tokens= arbo.analyze_new()
     
-    for i,grp in enumerate(grp2tokens):
-        print(f"grp {i} :  {len(grp2tokens[i])} tokens {(len(grp2tokens[i])+1).bit_length()} bits")
-        print(f"{grp2tokens[i]}")
-        pass
+    
 
     
-    def token_to_grp(tok:str,grp2tokens)->int:
-        for gid, tokens in enumerate(grp2tokens):
-            if tok in tokens:
-                return gid
-        raise Exception(f"token not found {tok}")
-    
-    def word_to_code(word:str, grp2tokens:list[list[str]])->tuple[int]:
-        code = [0]*len(grp2tokens)
-        for tok in arbo.tokenizer(word):
-            grp = token_to_grp(tok, grp2tokens)
-            code[grp] = grp2tokens[grp].index(tok)+1
-        return tuple(code)
+
 
     bit_fields_lengths = [len(grp).bit_length() for grp in grp2tokens]
 
-    enum_values = {w.replace("-", "_").upper(): (token_to_bits(word_to_code(w, grp2tokens), bit_fields_lengths), bitmask_for_group(grp2tokens, word_to_groups(w, grp2tokens)), 0)
+    enum_values = {w.replace("-", "_").upper(): (token_to_bits(word_to_code(arbo.tokenizer(w), grp2tokens), bit_fields_lengths), bitmask_for_group(grp2tokens, word_to_groups(w, grp2tokens)), 0, True)
          for w in arbo.values}
     #NOTE add also single-token natures, those are not strictly values, but useful to have as individual tokens, for tests
-    enum_values.update({tok.upper(): (token_to_bits(word_to_code(tok, grp2tokens), bit_fields_lengths), bitmask_for_group(grp2tokens, token_to_grp(tok, grp2tokens)), offset_for_group(grp2tokens, token_to_grp(tok, grp2tokens)))  
-        for tok in arbo.tokens})
+    enum_values.update({tok.upper(): (token_to_bits(word_to_code(arbo.tokenizer(tok), grp2tokens), bit_fields_lengths), bitmask_for_group(grp2tokens, token_to_grp(tok, grp2tokens)), offset_for_group(grp2tokens, token_to_grp(tok, grp2tokens)), False)  
+        for tok in arbo.tokens if tok not in arbo.values})
+    
+    def word_to_group_path(word):
+        return tuple(i for i,x in enumerate(word_to_code(arbo.tokenizer(word),grp2tokens)) if x>0)
+
     # create NatTok as before
-    
-    class TokEnumBase(IntEnum):
-        def __new__(cls, *args):
-            # args is typically (value,) or (value, extra)
-            value = args[0]
-            # extra = args[1] if len(args) > 1 else None
-
-            # create the int-backed enum member
-            obj = int.__new__(cls, value)
-            obj._value_ = value
-            # attach any extra attributes you need
-            obj.bitmask = args[1] if len(args) > 1 else 0
-            obj.offset = args[2] if len(args) > 2 else 0
-
-            return obj
-
-        def has_token(self, tok)->bool:
-            return self.value & tok.bitmask == tok.value
-    
-
     NatTok = TokEnumBase(
         "NatTok",
         enum_values
@@ -146,7 +152,7 @@ def test_arbo(values_set):
 
 
     for n in NatTok:
-        assert n.value == token_to_bits(word_to_code(n.name.replace("_","-").lower(), grp2tokens), bit_fields_lengths)
+        assert n.value == token_to_bits(word_to_code(arbo.tokenizer(n.name.replace("_","-").lower()), grp2tokens), bit_fields_lengths)
         # print(f"nature {n} code {get_code(n.name.replace('_','-').lower(), grp2tokens)} bin {bin(n.value)} bits {n.value:0{sum(bit_fields_lengths)}b}")
 
         for tok in [NatTok.SYMB, NatTok.ADJ, NatTok.VERB, NatTok.FLEX, NatTok.NOM, NatTok.FLEX_ADJ]:
@@ -157,12 +163,21 @@ def test_arbo(values_set):
                 assert n.has_token(tok), f"nature {n} {n.name} incorrectly identified as NOT {tok.name} {tok.value}"
             else:
                 assert not n.has_token(tok), f"nature {n} {n.name} incorrectly identified as {tok.name} {tok.value}"
-                
+
+    # [(n,word_to_group_path(n.name.replace("_","-").lower())) for n in NatTok]
+
     return NatTok
 
 natures = {'pronom-rel', 'flex-verb', 'nom', 'flex-art-déf', 'var-typo', 'adj-dém', 'part', 'flex-art-indéf', 'flex-adj-pos', 'adj-indéf', 'prénom', 'nom-pr', 'pronom-pers', 'adj', 'adv', 'verb', 'art-part', 'flex-adj', 'flex-adj-indéf', 'onoma', 'adj-int', 'conj-coord', 'flex-adj-dém', 'adv-int', 'flex-nom', 'interj', 'symb', 'flex-pronom-dém', 'adv-rel', 'suf', 'pronom-dém', 'flex-pronom-rel', 'flex-pronom-pers', 'phr', 'flex-prép', 'lettre', 'adj-num', 'pronom-int', 'prép', 'flex-pronom-int', 'adj-rel', 'adj-pos', 'flex-adv', 'pronom', 'nom-fam', 'pronom-indéf', 'flex-pronom-indéf', 'art-indéf', 'flex-adj-int', 'art-déf', 'conj'}
 
 NatTok = test_arbo(natures)
+
+for tok in NatTok.valid_words():
+    print(f"valid word token: {tok.name}")
+
+for tok in NatTok:
+    if not tok.valid_word:
+        print(f"non-valid word token: {tok.name}")
 
 
 
