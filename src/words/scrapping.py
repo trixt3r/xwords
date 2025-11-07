@@ -28,6 +28,28 @@ def extract_ol_semantic(ol):
         semantics.append(s)
     return set(semantics)
 
+
+def extract_mot_api(word, block):
+    candidates = block.find_all("a",href="Annexe:Prononciation/français")
+    if len(candidates)==1 or len(set([c.text for c in candidates]))==1:
+        parent = candidates[0].parent
+        words = [x for x in parent.stripped_strings]
+        api = None
+        mot = None
+        for i in range(len(words)):
+            w = words[i]
+            if w.startswith("\\") and w.endswith("\\"):
+                api = extract_api(w)
+                words.remove(w)
+        if api is None:
+            raise ExtractException("Aucune API trouvée")
+        else:
+            assert " ".join(words).strip() == word
+            return word_t(word, api)
+    else:
+        raise ExtractException(f"{len(candidates)} API trouvée")
+
+
 def iter_over_level2_blocks(soup)->Generator[element.Tag, None, None]:
     for l in soup.find_all("details", attrs={"data-level":2}):
         yield l
@@ -120,6 +142,9 @@ def extract_no_flextable(word,block):
     elif "féminin" in tmp:  
         genre = "féminin"
         tmp.remove("féminin")
+    elif "invariable" in tmp:
+        genre = "invariable"
+        # tmp.remove("invariable")
     else:
         raise ExtractException(f"pas de genre trouvé pour {word}")
     if "au singulier uniquement" in tmp:
@@ -147,6 +172,8 @@ def extract_flextable_new(word,block):
         return extract_no_flextable(word,block)
         # raise ExtractException(f"pas de flextable trouvée pour {word}")
     _nombres = [x.text.strip().lower() for x in flextable.find("tr").find_all("th")]
+    if len(_nombres)==1 and _nombres[0]=="invariable":
+        pass
     _genres = [x.find("th") for x in flextable.find_all("tr")[1:] if x.find("th") is not None]
     _genres = [x.text.strip().lower() for x in _genres]
     if len(_genres)==1:
@@ -254,13 +281,15 @@ def extract_flextable_new(word,block):
         genre = "féminin"   
     elif "n" in flex:
         genre = "neutre"
+    elif flex[0]=="i":
+        genre = "invariable"
     else:
         raise ExtractException(f"pas de genre trouvé pour {word}")
     if "s" in flex:
         nombre = "singulier"
     elif "p" in flex:
         nombre = "pluriel"
-    elif "i" in flex:
+    elif flex[1]=="i":
         nombre = "invariable"
     api = result[flex][1]
     return result, genre, nombre, api
@@ -273,6 +302,20 @@ def parse_flex_verb(w,block):
     if li.find("i") is not None:
         forme = li.find("i").text.lower().split()
     else:
+        forme = block.find("ol").find("li").text.strip().lower().split()
+        if forme[0] == "participe":
+            genre = "m"
+            nombre = "s"
+            if forme[1] in ["présent","passé"]:
+                type_participe = forme[1]
+                if "féminin" in forme:
+                    genre = "f"
+                    pass
+                if "pluriel" in forme:
+                    nombre = "p"
+                    pass
+                return (f"participe {type_participe}", genre, nombre)
+    
         #NOTE c'est sûrement une variante orthographique du verbe
         #exemple: "écoeurez" -> "écœurez"
         raise ExtractException(f"forme du verbe introuvable pour {w}")
@@ -340,7 +383,20 @@ def default_api_handler(block, nature:str, w:str):
     api = extract_api(apis.text.strip())
     return {"nature":nature, "api":api, "mot":w}
 
-def new_master_scrapper(word:str):
+def parse_nom_adj_block(word, block, flex=False):
+    pass
+
+def parse_verb_block(word, block, flex=False):
+    pass
+
+def parse_adv_block(word, block):
+    pass
+
+def parse_prep_block(word, block):
+    pass
+
+
+def new_master_scrapper(word:str)->list[dict]:
     
     page = requests.get(f"{BASE_URL}{word}")
     # page = requests.get("http://192.168.43.125:8181/wiktionary_fr_all_nopic_2020-10/A/%s" % w)
@@ -349,7 +405,7 @@ def new_master_scrapper(word:str):
     # results = []
     all_senses = []
     current_sense = None
-    default_etymo = ()
+    default_etymo = None
     for b in iter_over_level2_blocks(soup):
         summary = b.find("summary")
         if summary is None:
@@ -357,20 +413,28 @@ def new_master_scrapper(word:str):
         if summary.text=="Français":
             for block in b.select("details"):
                 if block.get("data-level")=="3":
+                    semantics = None
+                    ol = block.find("ol")
+                    if ol is not None:
+                        semantics = extract_ol_semantic(ol)
                     if current_sense is not None:
                         #  TODO il est possible que ce bloc de niveau 3 soit en rapport avec le sens courant
+                        if not "etymologie" in current_sense and default_etymo is not None:
+                            current_sense["etymologie"] = default_etymo
+                            default_etymo = None
                         all_senses.append(current_sense)
                         current_sense = None
+                        
 
-                    #TODO garder trace des titres qui passent
+                    #TODO garder trace des titres qui passent ?
                     title = block.summary.text.strip().lower()
                     if title == "étymologie":
                         print(title)
                         links = block.find_all("a")
                         if len(links)==0:
                             continue
-                        etym = {unquote(link['href']) for link in links}
-                        if len(links)<=2:
+                        etym = {(link.text, unquote(link['href'])) for link in links}
+                        if len(links)<=3:
                             if current_sense is not None:
                                 current_sense["étymologie"] = etym
                             else:
@@ -389,29 +453,31 @@ def new_master_scrapper(word:str):
                     nature = block.find("span", class_="titredef")
                     if nature is None:
                         ExtractException("pas de nature trouvée")
-                    
-                    tmp_nature = nature['id'][3:regex_nature.search(nature['id']).span()[0]-1]
-                    nature = tmp_nature
+                    else:
+                        nature = nature['id']
+                        nature = nature[3:regex_nature.search(nature).span()[0]-1]
+
                     if nature.startswith("flex-"):
                         flex = True
                         nature = nature[5:]
 
+                    
                     if nature in ["nom", "adj"]:
                         flextable, genre, nombre, api = extract_flextable_new(word,block)
                         # results.append(flextable)
                         if nombre == "invariable":
                             print(f"{word} est invariable")
                         print(flextable)
-                        ol = block.find("ol")
-                        semantics = extract_ol_semantic(ol)
+                        
+                        
                         # info_t = word_info_t(nature, api, genre[0], nombre, lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, mot=w)
                         #TODO: on renvoie le genre mais pas le nombre ?
-                        current_sense={"nature":nature, "api":api, "mot":word, "genre":genre[0], "nombre":nombre, "semantics":semantics, "flex":flextable}
+                        current_sense={"nature":nature, "api":api, "mot":word, "genre":genre[0], "nombre":nombre, "flex":flextable}
+                        
                     elif nature == "verb":
                         infinitif = None
                         if flex:
                             #extraire l'infinitif du verbe depuis la soup
-                            print("flex")
                             t=block.find("table", class_="flextable")
                             # infinitif = t.find("a", href=re.compile("^Conjugaison%3Afran%C3%A7ais/")).attrs["href"][28:]
                             
@@ -440,7 +506,7 @@ def new_master_scrapper(word:str):
                             #TODO: que faire avec cet objet à présent ? on a extrait la conjugaison, il nous faut les infos sémantiques
                             #TODO visiter la page du verbe pour extraire les infos
                             current_sense = {"nature":"verb", "mot":verb_dict["inf"].ort, "api":verb_dict["inf"].api, "conjugaison":verb_dict}
-                    elif nature == "ad-rel":
+                    elif nature == "adv-rel":
                         pass
                     elif nature == "art-déf":
                         flextable, genre, nombre, api = extract_flextable_new(word,block)
@@ -456,6 +522,9 @@ def new_master_scrapper(word:str):
                         pass
                     elif nature == "pronom-int":
                         pass
+                    elif nature == "prép":
+                        mot, api = extract_mot_api(word, block)
+                        current_sense={"nature":nature, "api":api, "mot":word}
                     elif nature == "art-indéf":
                         flextable, genre, nombre, api = extract_flextable_new(word,block)
                         assert None not in [flextable, genre, nombre, api]
@@ -473,6 +542,8 @@ def new_master_scrapper(word:str):
                         pass
                     else:
                         raise ExtractException(f"nature {nature} non gérée pour {word}")
+                    if semantics is not None and current_sense is not None:
+                        current_sense["semantics"] = semantics
                 elif block.get("data-level")=="4":
                     # TODO il est possible que ce bloc de niveau 4 soit en rapport avec le sens courant
                     if block.summary is not None:
