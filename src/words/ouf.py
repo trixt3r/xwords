@@ -1,19 +1,6 @@
 from scrapping import *
 
-phrase = "Il est important de bien comprendre le fonctionnement des verbes transitifs et intransitifs en français."
 
-mot_en = new_master_scrapper("en")
-print(mot_en)
-
-mot_est = new_master_scrapper("est")
-print(mot_est)
-
-mot_dans = new_master_scrapper("dans")
-print(mot_dans)
-
-
-mot_de = new_master_scrapper("de")
-print(mot_de)
 
 def process_phrase(phrase: str):
     tokened_phrase = []
@@ -34,5 +21,30 @@ def process_phrase(phrase: str):
             tokened_phrase.append([(word, None, 1)])
     return tokened_phrase
 
-p=process_phrase(phrase)
-print ([len(w) for w in p])
+
+phrase = "Il est important de bien comprendre le fonctionnement des verbes transitifs et intransitifs en français."
+
+mots_à_tester = ["b", "bien","de","carrément", "où", "que", "en", "est", "dans"]
+mots_à_tester = [ "aux", "quel", "lequel", "duquel", "desquelles"]
+mots_à_tester = ["que", "qui", "à", "des", "le", "là", "ici", "cela", "celle", "celui", "ceux", "celles",
+                 "dont", "où", "quand", "comment", "pourquoi","y",
+                 "je", "tu", "il", "elle", "nous", "vous", "ils", "elles", "on", "eux",
+                 "me", "te", "se", "le", "la", "les", "lui", "leur", "moi","toi","du","au"]
+
+def test_extracting_words(mots_à_tester:list[str]):
+    errors = []
+    entries = {}
+    for word in mots_à_tester:
+        try:
+            entry = new_master_scrapper(word)
+            entries[word] = entry
+            print(f"Mot: {word} -> Entries: {[e['nature'] for e in entry]}")
+        except ExtractException as e:
+            print(f"Erreur lors de l'extraction pour {word}: {e}")
+            errors.append((word, str(e)))
+    print(f"{len(errors)/len(mots_à_tester)*100}% d'erreurs")
+    return entries, errors
+
+entries, errors =test_extracting_words(mots_à_tester)
+# p = process_phrase(phrase)
+# print([len(w) for w in p])

@@ -14,6 +14,10 @@ class ExtractException(Exception):
     """Custom exception for extraction errors in kiwix_crawler."""
     pass
 
+class ExtractExceptionDrop(ExtractException):
+    """Custom exception for extraction errors that should lead to dropping the entry."""
+    pass
+
 def extract_api(text):
     if text.startswith("Prononciation") or text.startswith("\\Prononciation"):
         return "?"

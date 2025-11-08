@@ -12,7 +12,7 @@ from conjug_extract import ConjugExtract
 from anagrammes import load_words_list
 from GNode import *
 from words_tuple import word_t
-from scrap_base import BASE_URL, ExtractException, extract_api, search_gcd
+from scrap_base import BASE_URL, ExtractException, ExtractExceptionDrop, extract_api, search_gcd
 from verb import Verb_info
 
 
@@ -32,8 +32,11 @@ def extract_ol_semantic(ol):
 def extract_mot_api(word, block):
     candidates = block.find_all("a",href="Annexe:Prononciation/français")
     if len(candidates)==1 or len(set([c.text for c in candidates]))==1:
+        genre, nombre = None, None
         parent = candidates[0].parent
         words = [x for x in parent.stripped_strings]
+        if "," in words:
+            words.remove(",")
         api = None
         mot = None
         for i in range(len(words)):
@@ -41,13 +44,36 @@ def extract_mot_api(word, block):
             if w.startswith("\\") and w.endswith("\\"):
                 api = extract_api(w)
                 words.remove(w)
+                assert len([x for x in words if x.startswith("\\") and x.endswith("\\")])==0
+                break
+        if "invariable" in words:
+            genre, nombre = "invariable", "invariable"
+            words.remove("invariable")
+        if "singulier" in words:
+            genre, nombre = "masculin", "singulier"
+            words.remove("singulier")
+        elif "pluriel" in words:
+            genre, nombre = "masculin", "pluriel"
+            words.remove("pluriel")
+        if "masculin" in words:
+            genre = "masculin"
+            words.remove("masculin")
+        elif "féminin" in words:
+            genre = "féminin"
+            words.remove("féminin")
+        elif "masculin et féminin identiques" in words:
+            genre = "masculinetféminin"
+            words.remove("masculin et féminin identiques")
+        elif "neutre" in words:
+            genre = "neutre"
+            words.remove("neutre")
         if api is None:
             raise ExtractException("Aucune API trouvée")
         else:
-            assert " ".join(words).strip() == word
+            assert " ".join(words).strip() == word, f"attendu {word}, obtenu {' '.join(words).strip()}"
             return word_t(word, api)
     else:
-        raise ExtractException(f"{len(candidates)} API trouvée")
+        raise ExtractException(f"{len(candidates)} API trouvées pour {word}")
 
 
 def iter_over_level2_blocks(soup)->Generator[element.Tag, None, None]:
@@ -114,11 +140,10 @@ def extract_no_flextable(word,block):
             genre = g_n[0]
             nombre = g_n[1]
             _api = tags[1].text.strip().split(" ")
-            assert len(_api)==2
+            assert len(_api)==2, f"api inattendue pour {word}: {_api}"
             assert _api[1].startswith("\\") and _api[1].endswith("\\")
             api = extract_api(_api[1])
             return {_get_key_desinence(genre, nombre):( word, api)}, genre, nombre, api
-            raise NotImplementedError("pas fini")
     else:
         assert len(set([x.parent for x in ldf])) == 1
     tmp = [e.text.strip() for e in ldf[0].parent]
@@ -161,7 +186,7 @@ def extract_no_flextable(word,block):
         tmp.remove("(Indénombrable)")
     else:
         raise ExtractException(f"pas de nombre trouvé pour {word}")
-    return {_get_key_desinence(genre, nombre):( _orth, _api)}, genre, nombre, _api
+    return {_get_key_desinence(genre, nombre):word_t( _orth, _api)}, genre, nombre, _api
 
 
 def extract_flextable_new(word,block):
@@ -273,6 +298,17 @@ def extract_flextable_new(word,block):
     candidates_flex = [key for key,value in result.items() if value[0]==word]
     if len(candidates_flex) > 1:
         warnings.warn(f"ambiguité dans les flexions pour {word}, on prend la première")
+    elif len(candidates_flex) == 0:
+        print(f"O candidats")
+        caption = block.select("table.flextable caption")
+        if(len(caption)>0):
+            caption = caption[0].text.strip().lower()
+            if caption == "avec l’article défini":
+                if word == "de":
+
+                    raise ExtractExceptionDrop("un cas particulier que je sais pas trop comment gérer")
+
+
     flex = candidates_flex[0]
     genre, nombre, api = None, None, None
     if "m" in flex:
@@ -374,20 +410,91 @@ def parse_flex_verb(w,block):
 def default_api_handler(block, nature:str, w:str):
     apis = block.find_all("a", href="Annexe%3APrononciation/fran%C3%A7ais")
     if len(apis)==0:
-        raise ExtractException(f"pas d'API trouvée pour {w} {nature}")
-    if len(apis)==2:
-        warnings.warn(f"2 phonetics pour {w}, a verifier. on droppe le second")
+        apis = block.find_all("a", href="Annexe:Prononciation/français")
+        if len(apis)==0:
+            raise ExtractException(f"pas d'API trouvée pour {w} {nature}")
+    if len(apis)>1 :
+        if len(set([a.text for a in apis]))>1:
+            warnings.warn(f"{len(apis)} phonétiques pour {w}, a verifier. on prend le premier")
         apis = apis[0]
     elif len(apis)==1:
         apis = apis[0]
     api = extract_api(apis.text.strip())
     return {"nature":nature, "api":api, "mot":w}
 
-def parse_nom_adj_block(word, block, flex=False):
-    pass
+def default_handler(word:str, block, flex=False):
+    mot,api=None,None
+    current_sense = None
+    if block.find("table", class_="flextable") is not None:
+        flextable, genre, nombre, api = extract_flextable_new(word,block)
+        assert None not in [flextable, genre, nombre, api]
+        current_sense={"api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
+    else:
+        mot, api = extract_mot_api(word, block)
+        current_sense={"api":api, "mot":word}
+    return current_sense
+
+def parse_nom_adj_block(word, block, flex=False) -> dict:
+    flextable, genre, nombre, api = extract_flextable_new(word,block)
+    # results.append(flextable)
+    if nombre == "invariable":
+        print(f"{word} est invariable")
+    print(flextable)
+    # info_t = word_info_t(nature, api, genre[0], nombre, lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, mot=w)
+    #TODO: on renvoie le genre mais pas le nombre ?
+    return{"api":api, "mot":word, "genre":genre[0], "nombre":nombre, "flex":flextable}
+
+
+def parse_nom_block(word, block, flex=False):
+    if word == "au":
+        raise ExtractExceptionDrop('cas particulier "au" en tant que nom. On droppe')
+    r = parse_nom_adj_block(word, block, flex)
+    if flex:
+        r["nature"] = "flex-nom"
+    else:
+        r["nature"] = "nom"
+    return r
+
+def parse_adj_block(word, block, flex=False):
+    r = parse_nom_adj_block(word, block, flex)
+    if flex:
+        r["nature"] = "flex-adj"
+    else:
+        r["nature"] = "adj"
+    return r
 
 def parse_verb_block(word, block, flex=False):
-    pass
+    infinitif = None
+    if flex:
+        #extraire l'infinitif du verbe depuis la soup
+        t=block.find("table", class_="flextable")
+        # infinitif = t.find("a", href=re.compile("^Conjugaison%3Afran%C3%A7ais/")).attrs["href"][28:]
+        
+        infinitif = t.find("a", href=re.compile("^Conjugaison:français/"))
+        if infinitif is None:
+            warnings.warn(f"infinitif non trouvé pour {word}")
+            pass
+        infinitif = infinitif.attrs["href"][21:]
+        ##################################
+        forme = parse_flex_verb(word,block)
+        if len(forme) == 3:
+            #                                                                part. pst/passé,  genre,   nombre
+            return {"nature":"flex-verb", "infinitif":infinitif, "forme":(forme[0], forme[1], forme[2])}
+        elif len(forme) == 4:
+            #                                                                   personne,  nombre,   temps,    mode    
+            return {"nature":"flex-verb", "infinitif":infinitif, "forme":(forme[0], forme[1], forme[3], forme[2])}
+        else:
+            raise ExtractException(f"forme de verbe inattendue pour {word}: {forme}")
+    else:
+        conjug_extractor = ConjugExtract()
+        transitif=True
+        if "intransitif" in block.find("summary").findNextSibling("p").text:
+            transitif=False
+        verb_dict = conjug_extractor.extract_verb_info_wiki(word)
+        verb_dict["transitif"]=transitif
+        #TODO: que faire avec cet objet à présent ? on a extrait la conjugaison, il nous faut les infos sémantiques
+        #TODO visiter la page du verbe pour extraire les infos
+        return {"nature":"verb", "mot":verb_dict["inf"].ort, "api":verb_dict["inf"].api, "conjugaison":verb_dict}
 
 def parse_adv_block(word, block):
     pass
@@ -395,6 +502,22 @@ def parse_adv_block(word, block):
 def parse_prep_block(word, block):
     pass
 
+def parse_nature(word, block)->tuple[str, bool]:
+    regex_nature = re.compile('[1-9]')
+    nature:str = ""
+    flex = False
+    nature_block = block.find("span", class_="titredef")
+    if nature_block is None:
+        ExtractException("pas de nature trouvée")
+    else:
+        nature = nature_block['id']
+        nature = nature[3:regex_nature.search(nature).span()[0]-1]
+    
+    if nature.startswith("flex-"):
+        flex = True
+        nature = nature[5:]
+    
+    return nature, flex
 
 def new_master_scrapper(word:str)->list[dict]:
     
@@ -430,7 +553,7 @@ def new_master_scrapper(word:str)->list[dict]:
                     title = block.summary.text.strip().lower()
                     if title == "étymologie":
                         print(title)
-                        links = block.find_all("a")
+                        links:list[element.Tag] = block.find_all("a")
                         if len(links)==0:
                             continue
                         etym = {(link.text, unquote(link['href'])) for link in links}
@@ -438,107 +561,127 @@ def new_master_scrapper(word:str)->list[dict]:
                             if current_sense is not None:
                                 current_sense["étymologie"] = etym
                             else:
-                                warnings.warn(f"étymologie trouvée pour {word} sans sens courant associé")
+                                # warnings.warn(f"étymologie trouvée pour {word} sans sens courant associé")
                                 default_etymo = etym
-                        else:
-                            warnings.warn(f"{word} etym {len(links)} liens, à vérifier")
-                            continue
+                        # else:
+                        #     warnings.warn(f"{word} etym {len(links)} liens, à vérifier")
                         continue
 
                     elif title in ["prononciation", "voir aussi", "anagrammes", "références"]:
                         #  TODO 
                         continue
 
-                    flex = False
-                    nature = block.find("span", class_="titredef")
-                    if nature is None:
-                        ExtractException("pas de nature trouvée")
-                    else:
-                        nature = nature['id']
-                        nature = nature[3:regex_nature.search(nature).span()[0]-1]
-
-                    if nature.startswith("flex-"):
-                        flex = True
-                        nature = nature[5:]
-
+                    nature,flex = parse_nature(word, block)
                     
-                    if nature in ["nom", "adj"]:
-                        flextable, genre, nombre, api = extract_flextable_new(word,block)
-                        # results.append(flextable)
-                        if nombre == "invariable":
-                            print(f"{word} est invariable")
-                        print(flextable)
-                        
-                        
-                        # info_t = word_info_t(nature, api, genre[0], nombre, lex=champs_lex, anto=antonymes, hypo=hyponymes, syno=synonymes, mot=w)
-                        #TODO: on renvoie le genre mais pas le nombre ?
-                        current_sense={"nature":nature, "api":api, "mot":word, "genre":genre[0], "nombre":nombre, "flex":flextable}
-                        
+                    if nature == "nom":
+                        current_sense = parse_nom_block(word, block, flex)
+                    elif nature == "adj":
+                        current_sense = parse_adj_block(word, block, flex)
+                    elif nature == "adj-excl":
+                        current_sense = parse_adj_block(word, block, flex)
+                    elif nature == "adj-int":
+                        current_sense = parse_adj_block(word, block, flex)
+                    elif nature == "adj-pos":
+                        current_sense = parse_adj_block(word, block, flex)
+                    elif nature == "adj-rel":
+                        current_sense = parse_adj_block(word, block, flex)
                     elif nature == "verb":
-                        infinitif = None
-                        if flex:
-                            #extraire l'infinitif du verbe depuis la soup
-                            t=block.find("table", class_="flextable")
-                            # infinitif = t.find("a", href=re.compile("^Conjugaison%3Afran%C3%A7ais/")).attrs["href"][28:]
-                            
-                            infinitif = t.find("a", href=re.compile("^Conjugaison:français/"))
-                            if infinitif is None:
-                                warnings.warn(f"infinitif non trouvé pour {word}")
-                                pass
-                            infinitif = infinitif.attrs["href"][21:]
-                            ##################################
-                            forme = parse_flex_verb(word,block)
-                            if len(forme) == 3:
-                                #                                                                part. pst/passé,  genre,   nombre
-                                current_sense = {"nature":"flex-verb", "infinitif":infinitif, "forme":(forme[0], forme[1], forme[2])}
-                            elif len(forme) == 4:
-                                #                                                                   personne,  nombre,   temps,    mode    
-                                current_sense = {"nature":"flex-verb", "infinitif":infinitif, "forme":(forme[0], forme[1], forme[3], forme[2])}
-                            else:
-                                raise ExtractException(f"forme de verbe inattendue pour {word}: {forme}")
-                        else:
-                            conjug_extractor = ConjugExtract()
-                            transitif=True
-                            if "intransitif" in block.find("summary").findNextSibling("p").text:
-                                transitif=False
-                            verb_dict = conjug_extractor.extract_verb_info_wiki(word)
-                            verb_dict["transitif"]=transitif
-                            #TODO: que faire avec cet objet à présent ? on a extrait la conjugaison, il nous faut les infos sémantiques
-                            #TODO visiter la page du verbe pour extraire les infos
-                            current_sense = {"nature":"verb", "mot":verb_dict["inf"].ort, "api":verb_dict["inf"].api, "conjugaison":verb_dict}
+                        current_sense = parse_verb_block(word, block, flex)
                     elif nature == "adv-rel":
-                        pass
+                        mot, api = extract_mot_api(word, block)
+                        current_sense={"nature":nature, "api":api, "mot":word}
+                    elif nature == "adv-int":
+                        mot,api=None,None
+                        if block.find("table", class_="flextable") is not None:
+                            flextable, genre, nombre, api = extract_flextable_new(word,block)
+                            assert None not in [flextable, genre, nombre, api]
+                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
+                        else:
+                            mot, api = extract_mot_api(word, block)
+                            current_sense={"nature":nature, "api":api, "mot":word}
                     elif nature == "art-déf":
                         flextable, genre, nombre, api = extract_flextable_new(word,block)
                         assert None not in [flextable, genre, nombre, api]
                         current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
-                    elif nature == "pronom-pers":
-                        flextable, genre, nombre, api = extract_flextable_new(word,block)
-                        assert None not in [flextable, genre, nombre, api]
-                        current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
-                    elif nature == "pronom-rel":
-                        pass
-                    elif nature == "interj":
-                        pass
-                    elif nature == "pronom-int":
-                        pass
-                    elif nature == "prép":
+                    elif nature == "art-indéf":
+                        mot,api=None,None
+                        if block.find("table", class_="flextable") is not None:
+                            flextable, genre, nombre, api = extract_flextable_new(word,block)
+                            assert None not in [flextable, genre, nombre, api]
+                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
+                        else:
+                            mot, api = extract_mot_api(word, block)
+                            current_sense={"nature":nature, "api":api, "mot":word}
+                    elif nature == "art-part":
                         mot, api = extract_mot_api(word, block)
                         current_sense={"nature":nature, "api":api, "mot":word}
-                    elif nature == "art-indéf":
-                        flextable, genre, nombre, api = extract_flextable_new(word,block)
-                        assert None not in [flextable, genre, nombre, api]
-                        current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
+                    elif nature == "pronom-dém":
+                        mot,api=None,None
+                        if block.find("table", class_="flextable") is not None:
+                            flextable, genre, nombre, api = extract_flextable_new(word,block)
+                            assert None not in [flextable, genre, nombre, api]
+                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
+                        else:
+                            mot, api = extract_mot_api(word, block)
+                            current_sense={"nature":nature, "api":api, "mot":word}
+                    elif nature == "pronom-int":
+                        mot,api=None,None
+                        if block.find("table", class_="flextable") is not None:
+                            flextable, genre, nombre, api = extract_flextable_new(word,block)
+                            assert None not in [flextable, genre, nombre, api]
+                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
+                        else:
+                            mot, api = extract_mot_api(word, block)
+                            current_sense={"nature":nature, "api":api, "mot":word}
+                    elif nature == "pronom-pers":
+                        mot,api=None,None
+                        if block.find("table", class_="flextable") is not None:
+                            flextable, genre, nombre, api = extract_flextable_new(word,block)
+                            assert None not in [flextable, genre, nombre, api]
+                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
+                        else:
+                            mot, api = extract_mot_api(word, block)
+                            current_sense={"nature":nature, "api":api, "mot":word}
+                    elif nature == "pronom-rel":
+                        mot,api=None,None
+                        if block.find("table", class_="flextable") is not None:
+                            flextable, genre, nombre, api = extract_flextable_new(word,block)
+                            assert None not in [flextable, genre, nombre, api]
+                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
+                        else:
+                            mot, api = extract_mot_api(word, block)
+                            current_sense={"nature":nature, "api":api, "mot":word}
+                    elif nature == "interj":
+                        pass
+                    elif nature == "prép":
+                        mot,api=None,None
+                        if block.find("table", class_="flextable") is not None:
+                            try:
+                                flextable, genre, nombre, api = extract_flextable_new(word,block)
+                                assert None not in [flextable, genre, nombre, api]
+                                current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
+                            except ExtractExceptionDrop as e:
+                                warnings.warn(f"cas particulier pour {word}, là je droppe")
+                                continue
+                            except Exception as e:
+                                raise ExtractException(f"échec de l'extraction pour {word} {nature}: {e}")
+                        else:
+                            mot, api = extract_mot_api(word, block)
+                            current_sense={"nature":nature, "api":api, "mot":word}
                     elif nature == "conj":
                         current_sense = default_api_handler(block, nature, word)
                         if current_sense is None:
                             raise ExtractException(f"échec de l'extraction pour {word} {nature}")
-                        pass
                     elif nature=="conj-coord":
                         current_sense = default_api_handler(block, nature, word)
                         if current_sense is None:
                             raise ExtractException(f"échec de l'extraction pour {word} {nature}")
                     elif "adv" in nature:
+                        current_sense = default_api_handler(block, nature, word)
+                        if current_sense is None:
+                            raise ExtractException(f"échec de l'extraction pour {word} {nature}")
+                    elif nature=="lettre":
+                        warnings.warn(f"lettre {word} ignorée")
                         pass
                     else:
                         raise ExtractException(f"nature {nature} non gérée pour {word}")

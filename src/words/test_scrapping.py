@@ -12,6 +12,8 @@ for w in mots:
 print(result)
 words_list=load_words_list("data/gutenberg.txt")
 
+bulk_scrap(["de"])
+
 voyager, errors_voyeger = bulk_scrap(["voyager"])
 # print(voyager[0].)
 bulk_scrap(["mangiez"])
@@ -27,6 +29,7 @@ for k,words in ok.items():
 problemes_resolus = ["poisseux", "sableuse", "outrageante", "temps", "aurignacien"]
 problemes = ["angiosperme", "chauve", "écœurez", "écoeurez", "titillait", "tissaient", "sculpturaux", "débecqueter", "perturbée", "documentée", "rucher"]
 verbes_intransitifs = set(["dormir", "courir", "venir", "arriver", "partir", "naître", "mourir", "tomber", "rester", "séjourner", "habiter", "exister", "subsister", "résider", "surgir", "survenir", "advenir", "émerger","aller", "arriver", "courir", "venir", "pleurer", "nager"])
+
 # results, errors = bulk_scrap(problemes)
 # avec "rapides" c'est relou. 
 # Le block adjectif est ok: il indique "masculin et féminin identique"
