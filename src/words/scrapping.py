@@ -70,7 +70,11 @@ def extract_mot_api(word, block):
         if api is None:
             raise ExtractException("Aucune API trouvée")
         else:
-            assert " ".join(words).strip() == word, f"attendu {word}, obtenu {' '.join(words).strip()}"
+            if not " ".join(words).strip() == word:
+                if word in words:
+                    warnings.warn(f"mot {word} il reste des jetons dans la ligne de forme: {' '.join(words).strip()}")
+                else:
+                    raise ExtractException(f"attendu {word}, obtenu {' '.join(words).strip()}")
             return word_t(word, api)
     else:
         raise ExtractException(f"{len(candidates)} API trouvées pour {word}")
@@ -227,7 +231,10 @@ def extract_flextable_new(word,block):
 
                 #ça peut aussi être un adjectif (nom?) masculin et féminin identique, mais mal formaté
                 #voir angiosperme adjectif
-                _genres = ["?"]
+                if len(_nombres)==1 and _nombres[0]=="invariable":
+                    _genres = ["invariable"]
+                else:
+                    _genres = ["?"]
                 # raise ExtractException(f"pas de genre trouvé pour {word}")
             if "invariable" in ldf:
                 _nombres = ["invariable"]
@@ -270,15 +277,26 @@ def extract_flextable_new(word,block):
             raise ExtractException(f"4cas inattendu pour {word}")
     elif len(rows)==1:
         # rows = [[x.text for x in rows[0].find_all("a")]]
-        rows = [[tuple(y.text.strip() for y in x.find_all("a")) for x in row]for row in rows]
-        pass
+        _lengths = set([len(x.find_all("a")) for x in rows[0]])
+        if len(_lengths)==1 and _lengths.pop()==2:
+            rows = [[tuple(y.text.strip() for y in x.find_all("a")) for x in row]for row in rows]
+        else:
+            rows = [[tuple(y for y in x.text.strip().split(" ")) for x in row]for row in rows]
+            #TODO tester que c'est ok
+            pass
+        # for td in rows[0]:
+        #     _rows.append(tuple(y.text.strip() for y in r.find_all("a")))
+        # pass
 
 
     if _genres[0]=="masculinetféminin" or _genres[0]=="masculin et féminin identiques":
         _genres = ["masculin", "féminin"]
         assert len(rows)==1
         rows.append(rows[0])
-        
+    
+    if _nombres==["singulier et pluriel"]:
+        _nombres = ["invariable"]
+
     result = {}
     
     if len(rows)==len(_genres) :
@@ -448,6 +466,8 @@ def parse_nom_adj_block(word, block, flex=False) -> dict:
 def parse_nom_block(word, block, flex=False):
     if word == "au":
         raise ExtractExceptionDrop('cas particulier "au" en tant que nom. On droppe')
+    if block.find("table", class_="flextable") is None:
+        return default_handler(word, block, flex)
     r = parse_nom_adj_block(word, block, flex)
     if flex:
         r["nature"] = "flex-nom"
@@ -575,15 +595,7 @@ def new_master_scrapper(word:str)->list[dict]:
                     
                     if nature == "nom":
                         current_sense = parse_nom_block(word, block, flex)
-                    elif nature == "adj":
-                        current_sense = parse_adj_block(word, block, flex)
-                    elif nature == "adj-excl":
-                        current_sense = parse_adj_block(word, block, flex)
-                    elif nature == "adj-int":
-                        current_sense = parse_adj_block(word, block, flex)
-                    elif nature == "adj-pos":
-                        current_sense = parse_adj_block(word, block, flex)
-                    elif nature == "adj-rel":
+                    elif nature in ["adj", "adj-excl", "adj-int", "adj-pos", "adj-rel", "adj-indéf"]:
                         current_sense = parse_adj_block(word, block, flex)
                     elif nature == "verb":
                         current_sense = parse_verb_block(word, block, flex)
@@ -591,66 +603,26 @@ def new_master_scrapper(word:str)->list[dict]:
                         mot, api = extract_mot_api(word, block)
                         current_sense={"nature":nature, "api":api, "mot":word}
                     elif nature == "adv-int":
-                        mot,api=None,None
-                        if block.find("table", class_="flextable") is not None:
-                            flextable, genre, nombre, api = extract_flextable_new(word,block)
-                            assert None not in [flextable, genre, nombre, api]
-                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
-                        else:
-                            mot, api = extract_mot_api(word, block)
-                            current_sense={"nature":nature, "api":api, "mot":word}
+                        current_sense = default_handler(word, block, flex)
                     elif nature == "art-déf":
                         flextable, genre, nombre, api = extract_flextable_new(word,block)
                         assert None not in [flextable, genre, nombre, api]
                         current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
                     elif nature == "art-indéf":
-                        mot,api=None,None
-                        if block.find("table", class_="flextable") is not None:
-                            flextable, genre, nombre, api = extract_flextable_new(word,block)
-                            assert None not in [flextable, genre, nombre, api]
-                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
-                        else:
-                            mot, api = extract_mot_api(word, block)
-                            current_sense={"nature":nature, "api":api, "mot":word}
+                        current_sense = default_handler(word, block, flex)
                     elif nature == "art-part":
                         mot, api = extract_mot_api(word, block)
                         current_sense={"nature":nature, "api":api, "mot":word}
                     elif nature == "pronom-dém":
-                        mot,api=None,None
-                        if block.find("table", class_="flextable") is not None:
-                            flextable, genre, nombre, api = extract_flextable_new(word,block)
-                            assert None not in [flextable, genre, nombre, api]
-                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
-                        else:
-                            mot, api = extract_mot_api(word, block)
-                            current_sense={"nature":nature, "api":api, "mot":word}
+                        current_sense = default_handler(word, block, flex)
                     elif nature == "pronom-int":
-                        mot,api=None,None
-                        if block.find("table", class_="flextable") is not None:
-                            flextable, genre, nombre, api = extract_flextable_new(word,block)
-                            assert None not in [flextable, genre, nombre, api]
-                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
-                        else:
-                            mot, api = extract_mot_api(word, block)
-                            current_sense={"nature":nature, "api":api, "mot":word}
+                        current_sense = default_handler(word, block, flex)
                     elif nature == "pronom-pers":
-                        mot,api=None,None
-                        if block.find("table", class_="flextable") is not None:
-                            flextable, genre, nombre, api = extract_flextable_new(word,block)
-                            assert None not in [flextable, genre, nombre, api]
-                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
-                        else:
-                            mot, api = extract_mot_api(word, block)
-                            current_sense={"nature":nature, "api":api, "mot":word}
+                        current_sense = default_handler(word, block, flex)
                     elif nature == "pronom-rel":
-                        mot,api=None,None
-                        if block.find("table", class_="flextable") is not None:
-                            flextable, genre, nombre, api = extract_flextable_new(word,block)
-                            assert None not in [flextable, genre, nombre, api]
-                            current_sense={"nature":nature, "api":api, "mot":word, "genre":genre, "nombre":nombre, "flex":flextable}
-                        else:
-                            mot, api = extract_mot_api(word, block)
-                            current_sense={"nature":nature, "api":api, "mot":word}
+                        current_sense = default_handler(word, block, flex)
+                    elif nature == "pronom-indéf":
+                        current_sense = default_handler(word, block, flex)
                     elif nature == "interj":
                         pass
                     elif nature == "prép":
@@ -683,10 +655,23 @@ def new_master_scrapper(word:str)->list[dict]:
                     elif nature=="lettre":
                         warnings.warn(f"lettre {word} ignorée")
                         pass
+                    elif nature=="phr":
+                        warnings.warn(f"locution-phrase {word} ignorée")
+                        pass
+                    elif nature=="part":
+                        warnings.warn(f"particule {word} ignorée")
+                        pass
                     else:
                         raise ExtractException(f"nature {nature} non gérée pour {word}")
-                    if semantics is not None and current_sense is not None:
+                    
+                    if current_sense is not None:
+                        if flex:
+                            current_sense["nature"] = f"flex-{nature}"
+                        else:
+                            current_sense["nature"] = nature
+                    if semantics is not None and len(semantics)>0 and current_sense is not None:
                         current_sense["semantics"] = semantics
+                
                 elif block.get("data-level")=="4":
                     # TODO il est possible que ce bloc de niveau 4 soit en rapport avec le sens courant
                     if block.summary is not None:
